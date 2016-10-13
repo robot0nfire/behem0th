@@ -8,4 +8,7 @@ setup(name='behem0th',
       author_email='team@robot0nfire.com',
       license='MIT',
       packages=['behem0th'],
+      install_requires=[
+          'watchdog'
+      ],
       zip_safe=False)
