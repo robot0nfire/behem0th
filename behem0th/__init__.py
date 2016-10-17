@@ -41,11 +41,11 @@ IGNORE_LIST = [
 DEFAULT_PORT = 3078
 
 
-def log(str, *args, **kwargs):
+def _log(str, *args, **kwargs):
 	print('[behem0th]', Formatter().vformat(str, args, kwargs))
 
 
-def create_thread(target, **kwargs):
+def _create_thread(target, **kwargs):
 	args = kwargs['args'] if 'args' in kwargs else ()
 
 	thread = threading.Thread(target=target, args=args)
@@ -57,22 +57,22 @@ def create_thread(target, **kwargs):
 	return thread
 
 
-def read_file_seq(path):
+def _read_file_seq(path):
 	with open(path, 'rb') as f:
 		for buf in iter(partial(f.read, 4096), b''):
 			yield buf
 
 
-def hash_file(path):
+def _hash_file(path):
 	h = hashlib.md5()
 	h.update(bytes(path, 'utf-8'))
-	for buf in read_file_seq(path):
+	for buf in _read_file_seq(path):
 		h.update(buf)
 
 	return h.hexdigest()
 
 
-class RequestHandler(threading.Thread):
+class _RequestHandler(threading.Thread):
 	req_handler_num = 0
 
 	def __init__(self, **kwargs):
@@ -81,8 +81,8 @@ class RequestHandler(threading.Thread):
 		self._sync_list = []
 		self._sync_list_cv = threading.Condition()
 
-		RequestHandler.req_handler_num += 1
-		self.name = "request-handler-{0}".format(RequestHandler.req_handler_num)
+		_RequestHandler.req_handler_num += 1
+		self.name = "request-handler-{0}".format(_RequestHandler.req_handler_num)
 		for key, value in kwargs.items():
 			setattr(self, key, value)
 
@@ -167,7 +167,7 @@ class RequestHandler(threading.Thread):
 		self.setup()
 
 		try:
-			create_thread(self.sync_worker, name='{0}-sync_worker'.format(self.name))
+			_create_thread(self.sync_worker, name='{0}-sync_worker'.format(self.name))
 
 			while 1:
 				info = self.sock.recv(4)
@@ -192,7 +192,7 @@ class RequestHandler(threading.Thread):
 
 
 	def log(self, str, *args, **kwargs):
-		log('{__name}: ' + str, *args, __name=self.name, **kwargs)
+		_log('{__name}: ' + str, *args, __name=self.name, **kwargs)
 
 
 class Client:
@@ -224,7 +224,7 @@ class Client:
 		self._sock = socket.socket()
 		self._sock.connect(address)
 		self._peers.append(address)
-		self._server = RequestHandler(sock=self._sock, address=address, client=self)
+		self._server = _RequestHandler(sock=self._sock, address=address, client=self)
 		self._server.start()
 
 
@@ -232,7 +232,7 @@ class Client:
 		self._collect_files()
 
 		address = ('0.0.0.0', port)
-		create_thread(self._accept_worker, name='accept-worker', args=(address,))
+		_create_thread(self._accept_worker, name='accept-worker', args=(address,))
 
 
 	def close(self):
@@ -367,7 +367,7 @@ class Client:
 		for file in self.get_files():
 			conn.execute(
 				'insert into files(hash, path, type) values (?, ?, ?)',
-				(hash_file(file), file, 'file')
+				(_hash_file(file), file, 'file')
 			)
 
 		conn.commit()
@@ -382,5 +382,5 @@ class Client:
 		while 1:
 			sock, address = accept_sock.accept()
 			self._peers.append(address)
-			handler = RequestHandler(sock=sock, address=address, client=self)
+			handler = _RequestHandler(sock=sock, address=address, client=self)
 			handler.start()
