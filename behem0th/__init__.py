@@ -97,7 +97,7 @@ class _RequestHandler(threading.Thread):
 		if self._is_client:
 			# Lock the client until the filelist has been sent back by the server.
 			self.client.lock()
-			self.send('filelist', self.client._get_slim_filetree())
+			self.send('filelist', self.client._filetree)
 
 
 	def close(self):
@@ -114,7 +114,7 @@ class _RequestHandler(threading.Thread):
 				self.client.unlock()
 			else:
 				self.client._merge_filetree(tree)
-				self.send('filelist', self.client._get_slim_filetree())
+				self.send('filelist', self.client._filetree)
 
 		elif what == 'file':
 			info = json.loads(data.decode('utf-8'))
@@ -214,7 +214,7 @@ class Client:
 
 		self._filetree = {
 			'type': 'dir',
-			'abspath': self._sync_path,
+			'path': '',
 			'files': {}
 		}
 
@@ -294,7 +294,8 @@ class Client:
 
 
 	# Must be called holding _lock
-	def _add_to_filetree(self, path, type):
+	# path must be an absolute path
+	def _get_filetree_entry(self, path):
 		path = os.path.relpath(path, self._sync_path)
 		entry = self._filetree
 		splitted = path.split('/')
@@ -305,37 +306,31 @@ class Client:
 
 			entry = entry['files'][part]
 
-		entry['files'][splitted[-1]] = {
+		return (entry, path, splitted[-1])
+
+
+	# Same as _get_filetree_entry
+	def _add_to_filetree(self, path, type):
+		entry, relpath, name = self._get_filetree_entry(path)
+
+		entry['files'][name] = {
 			'type': type,
-			'abspath': os.path.join(self._sync_path, path),
+			'path': relpath,
 			'files': {}
 		}
 
 
-	def _get_slim_filetree(self, tree=None):
-		ret = {}
+	# Same as _get_filetree_entry
+	def _remove_from_filetree(self, path):
+		entry, relpath, name = self._get_filetree_entry(path)
 
-		self.lock()
-		if not tree:
-			tree = self._filetree
-
-		for name, file in tree['files'].items():
-			ret[name] = {
-				'type': file['type'],
-				'files': {}
-			}
-
-			if file['type'] == 'dir':
-				ret.update(self._get_slim_filetree(file))
-
-		self.unlock()
-		return ret
+		del entry['files'][name]
 
 
 	def _merge_filetree(self, filetree):
 		self.lock()
 
-		for name, info in filetree.items():
+		for name, info in filetree['files'].items():
 			if name not in self._filetree['files']:
 				self._add_to_filetree(name, info['type'])
 
@@ -344,7 +339,7 @@ class Client:
 
 	def _replace_filetree(self, filetree):
 		self.lock()
-		self._filetree['files'] = filetree
+		self._filetree = filetree
 		self.unlock()
 
 
