@@ -124,13 +124,15 @@ class _RequestHandler(threading.Thread):
 
 
 	def send(self, what, data):
+		what = bytes(what + '\n', 'utf-8')
+
 		if type(data) == dict:
 			data = json.dumps(data)
 
 		if type(data) == str:
-			data = bytes(what + '\n', 'utf-8') + bytes(data, 'utf-8')
+			data = what + bytes(data, 'utf-8')
 		else:
-			data = bytes(what + '\n', 'utf-8') + bytes(data)
+			data = what + bytes(data)
 
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
