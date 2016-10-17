@@ -226,7 +226,6 @@ class Client:
 		self._peers.append(address)
 		self._server = RequestHandler(sock=self._sock, address=address, client=self)
 		self._server.start()
-		self._server.queue_file('test2.txt', 'to')
 
 
 	def listen(self, port=DEFAULT_PORT):
