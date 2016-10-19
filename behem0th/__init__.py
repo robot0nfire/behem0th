@@ -161,7 +161,7 @@ class _RequestHandler(threading.Thread):
 
 				self.send('file', info)
 
-				for buf in read_file_seq(path):
+				for buf in _read_file_seq(path):
 					self.sock.sendall(buf)
 
 
