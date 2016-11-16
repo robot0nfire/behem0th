@@ -366,10 +366,16 @@ class Client:
 
 
 		for file in self.get_files():
-			conn.execute(
-				'insert into files(hash, path) values (?, ?)',
-				(_hash_file(file), file)
-			)
+			try:
+				conn.execute(
+					'insert into files(hash, path) values (?, ?)',
+					(_hash_file(file), file)
+				)
+			except FileNotFoundError:
+				_log(
+					"File '{0}' not found - possibly not fully sync'd!\n" \
+					"(This can normally be safely ignored - as soon as you reconnect, this device will sync up.)",
+				file)
 
 		conn.commit()
 		conn.close()
