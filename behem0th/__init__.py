@@ -23,11 +23,9 @@
 import socket
 import sqlite3
 import threading
-import sys, os, errno
-import socketserver
+import sys, os
 import json
 import struct
-import time
 import hashlib
 from string import Formatter
 from functools import partial
@@ -48,9 +46,7 @@ def _log(str, *args, **kwargs):
 	print('[behem0th]', str)
 
 
-def _create_thread(target, **kwargs):
-	args = kwargs['args'] if 'args' in kwargs else ()
-
+def _create_thread(target, args=(), **kwargs):
 	thread = threading.Thread(target=target, args=args)
 	if 'name' in kwargs:
 		thread.name = kwargs['name']
@@ -89,7 +85,7 @@ class _RequestHandler(threading.Thread):
 		for key, value in kwargs.items():
 			setattr(self, key, value)
 
-		self._is_client = not not self.client._sock
+		self._is_client = bool(self.client._sock)
 
 
 	def setup(self):
@@ -201,13 +197,13 @@ class _RequestHandler(threading.Thread):
 
 
 class Client:
-	def __init__(self, **kwargs):
+	def __init__(self, path='.', folder='.behem0th'):
 		self._sock = None
 		self._lock = threading.RLock()
 		self._peers = []
 
-		self._sync_path = os.path.abspath(kwargs['path'] if 'path' in kwargs else '.')
-		self._meta_folder = kwargs['folder'] if 'folder' in kwargs else '.behem0th'
+		self._sync_path = os.path.abspath(path)
+		self._meta_folder = folder
 
 		path = os.path.join(self._sync_path, self._meta_folder)
 		if not os.path.exists(path):
