@@ -360,16 +360,15 @@ class Client:
 		conn.execute('''
 			create table files (
 				hash text primary key,
-				path text not null,
-				type text not null
+				path text not null
 			)
 		''')
 
 
 		for file in self.get_files():
 			conn.execute(
-				'insert into files(hash, path, type) values (?, ?, ?)',
-				(_hash_file(file), file, 'file')
+				'insert into files(hash, path) values (?, ?)',
+				(_hash_file(file), file)
 			)
 
 		conn.commit()
