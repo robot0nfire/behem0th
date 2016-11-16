@@ -29,6 +29,8 @@ import struct
 import hashlib
 from string import Formatter
 from functools import partial
+from watchdog.observers import Observer
+from watchdog.events import PatternMatchingEventHandler
 
 
 IGNORE_LIST = [
@@ -85,6 +87,7 @@ class _RequestHandler(threading.Thread):
 		for key, value in kwargs.items():
 			setattr(self, key, value)
 
+		self.client._peers.append(self)
 		self._is_client = bool(self.client._sock)
 
 
@@ -121,6 +124,10 @@ class _RequestHandler(threading.Thread):
 				for buf in iter(partial(self.sock.recv, 4096), b''):
 					f.write(buf)
 
+		elif what == 'event':
+			# TODO
+			pass
+
 
 	def send(self, what, data):
 		what = bytes(what + '\n', 'utf-8')
@@ -136,32 +143,55 @@ class _RequestHandler(threading.Thread):
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
 
-	def queue_file(self, path, dir):
+	def queue_file(self, path, action):
 		with self._sync_list_cv:
-			self._sync_list.append({ 'path': path, 'dir': dir })
+			self._sync_list.append({
+				'action': action + '-file',
+				'path': path
+			})
+
+			self._sync_list_cv.notify()
+
+
+	def queue_event(self, event):
+		with self._sync_list_cv:
+			self._sync_list.append({
+				'action': 'send-event',
+				'event': event
+			})
+
 			self._sync_list_cv.notify()
 
 
 	def sync_worker(self):
 		while 1:
-			file = None
+			entry = None
 
 			with self._sync_list_cv:
 				self._sync_list_cv.wait_for(lambda: len(self._sync_list))
-				file = self._sync_list.pop(0)
+				entry = self._sync_list.pop(0)
 
-			if file['dir'] == 'to':
-				path = file['path']
-
+			if entry['action'] == 'send-file':
+				path = entry['path']
 				info = json.dumps({
 					'path': path,
 					'size': os.path.getsize(path)
 				})
 
 				self.send('file', info)
-
 				for buf in _read_file_seq(path):
 					self.sock.sendall(buf)
+
+			elif entry['action'] == 'request-file':
+				path = entry['path']
+				info = json.dumps({ 'path': path })
+
+				self.send('request', info)
+
+			elif entry['action'] == 'send-event':
+				info = json.dumps(entry['event'])
+
+				self.send('event', info)
 
 
 	def run(self):
@@ -196,6 +226,28 @@ class _RequestHandler(threading.Thread):
 		_log('{__name}: ' + str, *args, __name=self.name, **kwargs)
 
 
+class _FsEventHandler(PatternMatchingEventHandler):
+	def __init__(self, client):
+		super().__init__(ignore_patterns=client._ignore_list)
+		self._client = client
+
+
+	def on_created(self, event):
+		self._client._add_event(event)
+
+
+	def on_deleted(self, event):
+		self._client._add_event(event)
+
+
+	def on_modified(self, event):
+		self._client._add_event(event)
+
+
+	def on_moved(self, event):
+		self._client._add_event(event)
+
+
 class Client:
 	def __init__(self, path='.', folder='.behem0th'):
 		self._sock = None
@@ -217,6 +269,9 @@ class Client:
 			'files': {}
 		}
 
+		self._observer = Observer()
+		self._observer.schedule(_FsEventHandler(self), self._sync_path, recursive=True)
+
 
 	def connect(self, host, port=DEFAULT_PORT):
 		self._collect_files()
@@ -227,6 +282,7 @@ class Client:
 		self._peers.append(address)
 		self._server = _RequestHandler(sock=self._sock, address=address, client=self)
 		self._server.start()
+		self._observer.start()
 
 
 	def listen(self, port=DEFAULT_PORT):
@@ -234,12 +290,14 @@ class Client:
 
 		address = ('0.0.0.0', port)
 		_create_thread(self._accept_worker, name='accept-worker', args=(address,))
+		self._observer.start()
 
 
 	def close(self):
 		if self._sock:
 			self._sock.shutdown(socket.SHUT_RDWR)
 
+		self._observer.stop()
 		self._write_db()
 
 
@@ -265,7 +323,7 @@ class Client:
 
 
 	def get_peers():
-		return self._peers
+		return [p.address for p in self._peers]
 
 
 	def lock(self):
@@ -344,6 +402,29 @@ class Client:
 		self.unlock()
 
 
+	def _add_event(self, evt):
+		self.lock()
+
+		if evt.event_type == 'created':
+			self._add_to_filetree(evt.src_path, 'dir' if evt.is_directory else 'file')
+		elif evt.event_type == 'deleted':
+			self._remove_from_filetree(evt.src_path)
+			os.remove(evt.src_path)
+
+		self._run_on_peers('queue_event', {
+			'type': 'file-' + evt.event_type,
+			'path': evt.src_path,
+			'is_directory': evt.is_directory
+		})
+
+		self.unlock()
+
+
+	def _run_on_peers(self, method, *args, **kwargs):
+		for peer in self._peers:
+			getattr(peer, method)(*args, **kwargs)
+
+
 	def _write_db(self):
 		file = os.path.join(self._meta_folder, 'file_index.db')
 		try:
@@ -384,6 +465,5 @@ class Client:
 
 		while 1:
 			sock, address = accept_sock.accept()
-			self._peers.append(address)
 			handler = _RequestHandler(sock=sock, address=address, client=self)
 			handler.start()
