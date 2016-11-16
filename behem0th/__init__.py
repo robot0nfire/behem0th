@@ -309,7 +309,8 @@ class Client:
 		return (entry, path, splitted[-1])
 
 
-	# Same as _get_filetree_entry
+	# Must be called holding _lock
+	# path must be an absolute path
 	def _add_to_filetree(self, path, type):
 		entry, relpath, name = self._get_filetree_entry(path)
 
@@ -320,7 +321,8 @@ class Client:
 		}
 
 
-	# Same as _get_filetree_entry
+	# Must be called holding _lock
+	# path must be an absolute path
 	def _remove_from_filetree(self, path):
 		entry, relpath, name = self._get_filetree_entry(path)
 
