@@ -42,7 +42,10 @@ DEFAULT_PORT = 3078
 
 
 def _log(str, *args, **kwargs):
-	print('[behem0th]', Formatter().vformat(str, args, kwargs))
+	str = Formatter().vformat(str, args, kwargs)
+	str = str.replace('\n', '\n' + ' ' * 11)
+
+	print('[behem0th]', str)
 
 
 def _create_thread(target, **kwargs):
