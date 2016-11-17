@@ -45,19 +45,19 @@ class _FsEventHandler(PatternMatchingEventHandler):
 
 
 	def on_created(self, event):
-		self._client._add_event(event)
+		self._client._handle_event(event)
 
 
 	def on_deleted(self, event):
-		self._client._add_event(event)
+		self._client._handle_event(event)
 
 
 	def on_modified(self, event):
-		self._client._add_event(event)
+		self._client._handle_event(event)
 
 
 	def on_moved(self, event):
-		self._client._add_event(event)
+		self._client._handle_event(event)
 
 
 class Client:
@@ -284,7 +284,7 @@ class Client:
 			self._filetree = filetree
 
 
-	def _add_event(self, evt):
+	def _handle_event(self, evt):
 		self._lock()
 
 		type = 'dir' if evt.is_directory else 'file'
