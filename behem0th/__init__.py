@@ -103,7 +103,10 @@ class _RequestHandler(threading.Thread):
 
 
 	def close(self):
-		pass
+		try:
+			self.sock.shutdown(socket.SHUT_RDWR)
+		except OSError:
+			pass
 
 
 	def handle(self, what, data):
@@ -279,7 +282,6 @@ class Client:
 		address = (host, port)
 		self._sock = socket.socket()
 		self._sock.connect(address)
-		self._peers.append(address)
 		self._server = _RequestHandler(sock=self._sock, address=address, client=self)
 		self._server.start()
 		self._observer.start()
@@ -294,8 +296,12 @@ class Client:
 
 
 	def close(self):
-		if self._sock:
-			self._sock.shutdown(socket.SHUT_RDWR)
+		"""Closes all request handlers, writes the sync cache and shuts
+		down the client.
+
+		"""
+
+		self._run_on_peers('close')
 
 		self._observer.stop()
 		self._write_db()
