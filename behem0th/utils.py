@@ -20,4 +20,39 @@
 # SOFTWARE.
 #
 
-from behem0th.Client import Client
+import threading
+import hashlib
+from string import Formatter
+from functools import partial
+
+
+def log(str, *args, **kwargs):
+	str = Formatter().vformat(str, args, kwargs)
+	str = str.replace('\n', '\n' + ' ' * 11)
+
+	print('[behem0th]', str)
+
+
+def create_thread(target, args=(), **kwargs):
+	thread = threading.Thread(target=target, args=args)
+	if 'name' in kwargs:
+		thread.name = kwargs['name']
+	thread.daemon = True
+	thread.start()
+
+	return thread
+
+
+def read_file_seq(path):
+	with open(path, 'rb') as f:
+		for buf in iter(partial(f.read, 4096), b''):
+			yield buf
+
+
+def hash_file(path):
+	h = hashlib.md5()
+	h.update(bytes(path, 'utf-8'))
+	for buf in read_file_seq(path):
+		h.update(buf)
+
+	return h.hexdigest()
