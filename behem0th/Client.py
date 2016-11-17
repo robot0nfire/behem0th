@@ -287,17 +287,18 @@ class Client:
 	def _add_event(self, evt):
 		self._lock()
 
+		type = 'dir' if evt.is_directory else 'file'
+
 		if evt.event_type == 'created':
-			self._add_to_filetree(evt.src_path, 'dir' if evt.is_directory else 'file')
+			self._add_to_filetree(evt.src_path, type)
 
 		elif evt.event_type == 'deleted':
 			self._remove_from_filetree(evt.src_path)
 			os.remove(evt.src_path)
 
 		self._run_on_peers('queue_event', {
-			'type': 'file-' + evt.event_type,
-			'path': evt.src_path,
-			'is_directory': evt.is_directory
+			'type': type + '-' + evt.event_type,
+			'path': evt.src_path
 		})
 
 		self._unlock()
