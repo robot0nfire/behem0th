@@ -294,7 +294,6 @@ class Client:
 
 		elif evt.event_type == 'deleted':
 			self._remove_from_filetree(evt.src_path)
-			os.remove(evt.src_path)
 
 		self._run_on_peers('queue_event', {
 			'type': type + '-' + evt.event_type,
