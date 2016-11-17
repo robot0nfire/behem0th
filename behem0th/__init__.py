@@ -252,6 +252,23 @@ class _FsEventHandler(PatternMatchingEventHandler):
 
 
 class Client:
+	"""The main interface for behem0th
+
+	This class can either act as a client which connects to a behem0th server
+	or as a server to which behem0th clients can connect.
+
+	Parameters
+	----------
+	path : :obj:`str`, optional
+		The path which should be sync'd.
+	folder : :obj:`folder`, optional
+		The name of the folder which will contain behem0th-only
+		data needed for syncing.
+
+		behem0th will _not_ sync this folder!
+
+	"""
+
 	def __init__(self, path='.', folder='.behem0th'):
 		self._sock = None
 		self._rlock = threading.RLock()
@@ -277,6 +294,18 @@ class Client:
 
 
 	def connect(self, host, port=DEFAULT_PORT):
+		"""Connects to a behem0th server
+
+		Parameters
+		----------
+		host : :obj:`str`
+			Hostname/IP of the behem0th server
+
+		port : :obj:`int`, optional
+			Port of the behem0th server
+
+		"""
+
 		self._collect_files()
 
 		address = (host, port)
@@ -288,6 +317,15 @@ class Client:
 
 
 	def listen(self, port=DEFAULT_PORT):
+		"""Starts a behem0th server instance
+
+		Parameters
+		----------
+		port : :obj:`int`, optional
+			Port on which the server should be started
+
+		"""
+
 		self._collect_files()
 
 		address = ('0.0.0.0', port)
@@ -308,7 +346,13 @@ class Client:
 
 
 	def get_files(self):
+		"""
+		Returns
+		-------
+		:obj:`list`
+			A list of all currently sync'd files.
 
+		"""
 
 		with self._rlock:
 			ret = self._get_files()
@@ -317,10 +361,30 @@ class Client:
 
 
 	def open_file(self, path, mode='r'):
+		"""Opens a currently sync'd file for reading/writing.
+
+		Parameters
+		----------
+		path : :obj:`str`
+			Relative path of the file
+
+		mode : :obj:`str`, optional
+			Opening mode for the file (default: reading)
+			Format is the same as :func:`open`
+
+		"""
+
 		return None
 
 
 	def get_peers():
+		"""
+		Returns
+		-------
+		:obj:`list`
+			A list of IP-address of all currently connected devices
+
+		"""
 		return [p.address for p in self._peers]
 
 
