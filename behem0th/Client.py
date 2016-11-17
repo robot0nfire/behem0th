@@ -295,6 +295,10 @@ class Client:
 		elif evt.event_type == 'deleted':
 			self._remove_from_filetree(evt.src_path)
 
+		elif evt.event_type == 'moved':
+			self._remove_from_filetree(evt.src_path)
+			self._add_to_filetree(evt.dest_path, type)
+
 		self._run_on_peers('queue_event', {
 			'type': type + '-' + evt.event_type,
 			'path': evt.src_path
