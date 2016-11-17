@@ -98,7 +98,7 @@ class _RequestHandler(threading.Thread):
 		# thus needs to starts syncing up with the server.
 		if self._is_client:
 			# Lock the client until the filelist has been sent back by the server.
-			self.client.lock()
+			self.client._lock()
 			self.send('filelist', self.client._filetree)
 
 
@@ -116,7 +116,7 @@ class _RequestHandler(threading.Thread):
 			if self._is_client:
 				# The client is still locked
 				self.client._replace_filetree(tree)
-				self.client.unlock()
+				self.client._unlock()
 			else:
 				self.client._merge_filetree(tree)
 				self.send('filelist', self.client._filetree)
@@ -254,7 +254,7 @@ class _FsEventHandler(PatternMatchingEventHandler):
 class Client:
 	def __init__(self, path='.', folder='.behem0th'):
 		self._sock = None
-		self._lock = threading.RLock()
+		self._rlock = threading.RLock()
 		self._peers = []
 
 		self._sync_path = os.path.abspath(path)
@@ -307,10 +307,34 @@ class Client:
 		self._write_db()
 
 
-	def get_files(self, tree=None, relpath=''):
+	def get_files(self):
+
+
+		with self._rlock:
+			ret = self._get_files()
+
+		return ret
+
+
+	def open_file(self, path, mode='r'):
+		return None
+
+
+	def get_peers():
+		return [p.address for p in self._peers]
+
+
+	def _lock(self):
+		self._rlock.acquire()
+
+
+	def _unlock(self):
+		self._rlock.release()
+
+
+	def _get_files(self, tree=None, relpath=''):
 		ret = []
 
-		self.lock()
 		if not tree:
 			tree = self._filetree
 
@@ -320,28 +344,11 @@ class Client:
 			else:
 				ret.append(os.path.join(relpath, name))
 
-		self.unlock()
 		return ret
 
 
-	def open_file(self, path, dir=None):
-		return None
-
-
-	def get_peers():
-		return [p.address for p in self._peers]
-
-
-	def lock(self):
-		self._lock.acquire()
-
-
-	def unlock(self):
-		self._lock.release()
-
-
 	def _collect_files(self):
-		self.lock()
+		self._lock()
 
 		for root, dirs, files in os.walk(self._sync_path):
 			files[:] = [f for f in files if f not in self._ignore_list]
@@ -353,7 +360,7 @@ class Client:
 			for name in dirs:
 				self._add_to_filetree(os.path.join(root, name), 'dir')
 
-		self.unlock()
+		self._unlock()
 
 
 	# Must be called holding _lock
@@ -393,23 +400,23 @@ class Client:
 
 
 	def _merge_filetree(self, filetree):
-		self.lock()
+		self._lock()
 
 		for name, info in filetree['files'].items():
 			if name not in self._filetree['files']:
 				self._add_to_filetree(name, info['type'])
 
-		self.unlock()
+		self._unlock()
 
 
 	def _replace_filetree(self, filetree):
-		self.lock()
+		self._lock()
 		self._filetree = filetree
-		self.unlock()
+		self._unlock()
 
 
 	def _add_event(self, evt):
-		self.lock()
+		self._lock()
 
 		if evt.event_type == 'created':
 			self._add_to_filetree(evt.src_path, 'dir' if evt.is_directory else 'file')
@@ -423,7 +430,7 @@ class Client:
 			'is_directory': evt.is_directory
 		})
 
-		self.unlock()
+		self._unlock()
 
 
 	def _run_on_peers(self, method, *args, **kwargs):
@@ -456,7 +463,7 @@ class Client:
 				)
 			except FileNotFoundError:
 				_log(
-					"File '{0}' not found - possibly not fully sync'd!\n" \
+					"File '{0}' not found - possibly not fully sync'd!\n"
 					"(This can normally be safely ignored - as soon as you reconnect, this device will sync up.)",
 				file)
 
