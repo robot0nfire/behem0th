@@ -66,19 +66,18 @@ class RequestHandler(threading.Thread):
 
 
 	def handle(self, what, data):
-		if what == 'filelist':
-			tree = json.loads(data.decode('utf-8'))
+		info = json.loads(data.decode('utf-8'))
 
+		if what == 'filelist':
 			if self._is_client:
 				# The client is still locked
-				self.client._replace_filetree(tree)
+				self.client._replace_filetree(info)
 				self.client._unlock()
 			else:
-				self.client._merge_filetree(tree)
+				self.client._merge_filetree(info)
 				self.send('filelist', self.client._filetree)
 
 		elif what == 'file':
-			info = json.loads(data.decode('utf-8'))
 			with open(info['path'], 'wb') as f:
 				for buf in iter(partial(self.sock.recv, 4096), b''):
 					f.write(buf)
