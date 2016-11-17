@@ -126,7 +126,7 @@ class RequestHandler(threading.Thread):
 			entry = None
 
 			with self._sync_list_cv:
-				self._sync_list_cv.wait_for(lambda: len(self._sync_list))
+				self._sync_list_cv.wait()
 				entry = self._sync_list.pop(0)
 
 			if entry['action'] == 'send-file':
