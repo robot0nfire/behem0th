@@ -40,7 +40,7 @@ DEFAULT_PORT = 3078
 
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
-		super().__init__(ignore_patterns=client._ignore_list)
+		super().__init__(ignore_patterns=client._ignore_list, ignore_directories=True)
 		self._client = client
 
 
