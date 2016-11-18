@@ -44,19 +44,7 @@ class _FsEventHandler(PatternMatchingEventHandler):
 		self._client = client
 
 
-	def on_created(self, event):
-		self._client._handle_event(event)
-
-
-	def on_deleted(self, event):
-		self._client._handle_event(event)
-
-
-	def on_modified(self, event):
-		self._client._handle_event(event)
-
-
-	def on_moved(self, event):
+	def on_any_event(self, event):
 		self._client._handle_event(event)
 
 
