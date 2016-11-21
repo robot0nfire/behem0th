@@ -263,7 +263,7 @@ class Client:
 
 
 	@synchronized
-	def _handle_event(self, evt):
+	def _handle_fsevent(self, evt):
 		type = 'dir' if evt.is_directory else 'file'
 
 		if evt.event_type == 'created':
