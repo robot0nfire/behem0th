@@ -38,6 +38,15 @@ IGNORE_LIST = [
 DEFAULT_PORT = 3078
 
 
+def synchronized(fn):
+	def wrap(*args, **kwargs):
+		lock = args[0]._rlock
+		with lock:
+			return fn(*args, **kwargs)
+
+	return wrap
+
+
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
 		super().__init__(ignore_patterns=client._ignore_list, ignore_directories=True)
@@ -142,6 +151,7 @@ class Client:
 		self._write_db()
 
 
+	@synchronized
 	def get_files(self):
 		"""
 		Returns
@@ -151,10 +161,7 @@ class Client:
 
 		"""
 
-		with self._rlock:
-			ret = self._get_files(self._filetree)
-
-		return ret
+		return self._get_files(self._filetree)
 
 
 	def open_file(self, path, mode='r'):
@@ -174,6 +181,7 @@ class Client:
 		return None
 
 
+	@synchronized
 	def get_peers():
 		"""
 		Returns
@@ -185,14 +193,7 @@ class Client:
 		return [p.address for p in self._peers]
 
 
-	def _lock(self):
-		self._rlock.acquire()
-
-
-	def _unlock(self):
-		self._rlock.release()
-
-
+	@synchronized
 	def _get_files(self, tree, relpath=''):
 		ret = []
 
@@ -205,9 +206,8 @@ class Client:
 		return ret
 
 
+	@synchronized
 	def _collect_files(self):
-		self._lock()
-
 		for root, dirs, files in os.walk(self._sync_path):
 			files[:] = [f for f in files if f not in self._ignore_list]
 			dirs[:] = [d for d in dirs if d not in self._ignore_list]
@@ -218,11 +218,9 @@ class Client:
 			for name in dirs:
 				self._add_to_filetree(os.path.join(root, name), 'dir')
 
-		self._unlock()
 
-
-	# Must be called holding _lock
 	# path must be an absolute path
+	@synchronized
 	def _get_filetree_entry(self, path):
 		path = os.path.relpath(path, self._sync_path)
 		entry = self._filetree
@@ -237,8 +235,8 @@ class Client:
 		return (entry, path, splitted[-1])
 
 
-	# Must be called holding _lock
 	# path must be an absolute path
+	@synchronized
 	def _add_to_filetree(self, path, type):
 		entry, relpath, name = self._get_filetree_entry(path)
 
@@ -249,32 +247,23 @@ class Client:
 		}
 
 
-	# Must be called holding _lock
 	# path must be an absolute path
+	@synchronized
 	def _remove_from_filetree(self, path):
 		entry, relpath, name = self._get_filetree_entry(path)
 
 		del entry['files'][name]
 
 
+	@synchronized
 	def _merge_filetree(self, filetree):
-		self._lock()
-
 		for name, info in filetree['files'].items():
 			if name not in self._filetree['files']:
 				self._add_to_filetree(name, info['type'])
 
-		self._unlock()
 
-
-	def _replace_filetree(self, filetree):
-		with self._rlock:
-			self._filetree = filetree
-
-
+	@synchronized
 	def _handle_event(self, evt):
-		self._lock()
-
 		type = 'dir' if evt.is_directory else 'file'
 
 		if evt.event_type == 'created':
@@ -292,14 +281,14 @@ class Client:
 			'path': evt.src_path
 		})
 
-		self._unlock()
 
-
+	@synchronized
 	def _run_on_peers(self, method, *args, **kwargs):
 		for peer in self._peers:
 			getattr(peer, method)(*args, **kwargs)
 
 
+	@synchronized
 	def _write_db(self):
 		file = os.path.join(self._meta_folder, 'file_index.db')
 		try:

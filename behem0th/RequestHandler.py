@@ -54,7 +54,7 @@ class RequestHandler(threading.Thread):
 		# thus needs to starts syncing up with the server.
 		if self._is_client:
 			# Lock the client until the filelist has been sent back by the server.
-			self.client._lock()
+			self.client._rlock.acquire()
 			self.send('filelist', self.client._filetree)
 
 
@@ -70,9 +70,8 @@ class RequestHandler(threading.Thread):
 
 		if what == 'filelist':
 			if self._is_client:
-				# The client is still locked
-				self.client._replace_filetree(info)
-				self.client._unlock()
+				self.client._filetree = info
+				self.client._rlock.release()
 			else:
 				self.client._merge_filetree(info)
 				self.send('filelist', self.client._filetree)
