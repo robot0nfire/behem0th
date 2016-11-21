@@ -139,12 +139,6 @@ class RequestHandler(threading.Thread):
 				for buf in utils.read_file_seq(path):
 					self.sock.sendall(buf)
 
-			elif entry['action'] == 'request-file':
-				path = entry['path']
-				info = json.dumps({ 'path': path })
-
-				self.send('request', info)
-
 			elif entry['action'] == 'send-event':
 				info = json.dumps(entry['event'])
 
