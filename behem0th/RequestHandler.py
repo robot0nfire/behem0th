@@ -43,7 +43,9 @@ class RequestHandler(threading.Thread):
 		for key, value in kwargs.items():
 			setattr(self, key, value)
 
-		self.client._peers.append(self)
+		with self.client._rlock:
+			self.client._peers.append(self)
+
 		self._is_client = bool(self.client._sock)
 
 
