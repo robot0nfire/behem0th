@@ -84,8 +84,25 @@ class RequestHandler(threading.Thread):
 					f.write(buf)
 
 		elif what == 'event':
-			# TODO
-			pass
+			event_type = info['type']
+
+			if event_type[:3] == 'dir' or event_type[:4] == 'file':
+				f_type, event = info['type'].split('-')
+
+				# TODO: factor out common code with Client._handle_fsevent()
+				# TODO: Lock modified files until they are completely transfered.
+				if event == 'created':
+					self._add_to_filetree(info['path'], f_type)
+					open(info['path'], 'a').close()
+
+				elif event == 'deleted':
+					self._remove_from_filetree(info['path'])
+					os.remove(info['path'])
+
+				elif event == 'moved':
+					self._remove_from_filetree(info['path'])
+					self._add_to_filetree(info['dest'], f_type)
+					os.rename(info['path'], info['dest'])
 
 
 	def send(self, what, data):
