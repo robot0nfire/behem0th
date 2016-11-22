@@ -100,10 +100,10 @@ class RequestHandler(threading.Thread):
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
 
-	def queue_file(self, path, action):
+	def queue_file(self, path):
 		with self._sync_list_cv:
 			self._sync_list.append({
-				'action': action + '-file',
+				'action': 'send-file'
 				'path': path
 			})
 
