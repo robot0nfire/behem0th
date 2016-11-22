@@ -284,6 +284,9 @@ class Client:
 
 		self._run_on_peers('queue_event', remote_event)
 
+		if evt.event_type == 'modified':
+			self._run_on_peers('queue_file', evt.src_path)
+
 
 	@synchronized
 	def _run_on_peers(self, method, *args, **kwargs):
