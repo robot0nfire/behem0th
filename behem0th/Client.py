@@ -266,6 +266,11 @@ class Client:
 	def _handle_fsevent(self, evt):
 		type = 'dir' if evt.is_directory else 'file'
 
+		remote_event = {
+			'type': type + '-' + evt.event_type,
+			'path': evt.src_path
+		}
+
 		if evt.event_type == 'created':
 			self._add_to_filetree(evt.src_path, type)
 
@@ -275,11 +280,9 @@ class Client:
 		elif evt.event_type == 'moved':
 			self._remove_from_filetree(evt.src_path)
 			self._add_to_filetree(evt.dest_path, type)
+			remote_event['dest'] = evt.dest_path
 
-		self._run_on_peers('queue_event', {
-			'type': type + '-' + evt.event_type,
-			'path': evt.src_path
-		})
+		self._run_on_peers('queue_event', remote_event)
 
 
 	@synchronized
