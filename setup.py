@@ -9,6 +9,6 @@ setup(name='behem0th',
       license='MIT',
       packages=['behem0th'],
       install_requires=[
-          'watchdog'
+          'watchdog==0.8.3'
       ],
       zip_safe=False)
