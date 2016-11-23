@@ -24,6 +24,7 @@ import os
 import socket
 import sqlite3
 import threading
+from functools import wraps
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 from behem0th import utils
@@ -39,6 +40,7 @@ DEFAULT_PORT = 3078
 
 
 def synchronized(fn):
+	@wraps(fn)
 	def wrap(*args, **kwargs):
 		lock = args[0]._rlock
 		with lock:
@@ -182,7 +184,7 @@ class Client:
 
 
 	@synchronized
-	def get_peers():
+	def get_peers(self):
 		"""
 		Returns
 		-------

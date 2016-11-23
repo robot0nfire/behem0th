@@ -5,7 +5,8 @@ Public API
 ----------
 
 .. automodule:: behem0th
-    :members:
-    :undoc-members:
-    :show-inheritance:
-    :inherited-members:
+
+.. autoclass:: Client
+   :members:
+   :show-inheritance:
+   :inherited-members:
