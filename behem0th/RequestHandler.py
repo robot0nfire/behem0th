@@ -122,7 +122,7 @@ class RequestHandler(threading.Thread):
 	def queue_file(self, path):
 		with self._sync_list_cv:
 			self._sync_list.append({
-				'action': 'send-file'
+				'action': 'send-file',
 				'path': path
 			})
 
