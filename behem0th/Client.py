@@ -56,7 +56,7 @@ class _FsEventHandler(PatternMatchingEventHandler):
 
 
 	def on_any_event(self, event):
-		self._client._handle_event(event)
+		self._client._handle_fsevent(event)
 
 
 class _AcceptWorker(threading.Thread):
