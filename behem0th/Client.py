@@ -59,6 +59,26 @@ class _FsEventHandler(PatternMatchingEventHandler):
 		self._client._handle_event(event)
 
 
+class _AcceptWorker(threading.Thread):
+	def __init__(self, **kwargs):
+		super().__init__()
+		self.name = 'accept-worker'
+		self.kwargs = kwargs
+		self.daemon = True
+
+
+	def run(self):
+		client = self.kwargs['client']
+
+		accept_sock = socket.socket()
+		accept_sock.bind(self.kwargs['address'])
+		accept_sock.listen()
+
+		while 1:
+			sock, address = accept_sock.accept()
+			RequestHandler(sock=sock, address=address, client=client).start()
+
+
 class Client:
 	"""The main interface for behem0th
 
@@ -136,8 +156,7 @@ class Client:
 
 		self._collect_files()
 
-		address = ('0.0.0.0', port)
-		utils.create_thread(self._accept_worker, name='accept-worker', args=(address,))
+		_AcceptWorker(address=('0.0.0.0', port), client=self).start()
 		self._observer.start()
 
 
@@ -328,14 +347,3 @@ class Client:
 
 		conn.commit()
 		conn.close()
-
-
-	def _accept_worker(self, address):
-		accept_sock = socket.socket()
-		accept_sock.bind(address)
-		accept_sock.listen()
-
-		while 1:
-			sock, address = accept_sock.accept()
-			handler = RequestHandler(sock=sock, address=address, client=self)
-			handler.start()
