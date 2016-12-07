@@ -220,7 +220,7 @@ class Client:
 
 		for name, file in tree['files'].items():
 			if file['type'] == 'dir':
-				ret += self.get_files(file, os.path.join(relpath, name))
+				ret += self._get_files(file, os.path.join(relpath, name))
 			else:
 				ret.append(os.path.join(relpath, name))
 
