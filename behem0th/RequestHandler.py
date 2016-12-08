@@ -25,6 +25,7 @@ import json
 import struct
 import threading
 import socket
+import queue
 from functools import partial
 from behem0th import utils
 
@@ -35,8 +36,7 @@ class RequestHandler(threading.Thread):
 	def __init__(self, **kwargs):
 		super().__init__()
 		self.daemon = True
-		self._sync_list = []
-		self._sync_list_cv = threading.Condition()
+		self._sync_queue = queue.Queue()
 
 		RequestHandler.req_handler_num += 1
 		self.name = "request-handler-{0}".format(RequestHandler.req_handler_num)
@@ -144,32 +144,22 @@ class RequestHandler(threading.Thread):
 
 
 	def queue_file(self, action, path):
-		with self._sync_list_cv:
-			self._sync_list.append({
-				'action': action + '-file',
-				'path': path
-			})
-
-			self._sync_list_cv.notify()
+		self._sync_queue.put({
+			'action': action + '-file',
+			'path': path
+		})
 
 
 	def queue_event(self, event):
-		with self._sync_list_cv:
-			self._sync_list.append({
-				'action': 'send-event',
-				'event': event
-			})
-
-			self._sync_list_cv.notify()
+		self._sync_queue.put({
+			'action': 'send-event',
+			'event': event
+		})
 
 
 	def sync_worker(self):
 		while 1:
-			entry = None
-
-			with self._sync_list_cv:
-				self._sync_list_cv.wait()
-				entry = self._sync_list.pop(0)
+			entry = self._sync_queue.get()
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
@@ -192,7 +182,7 @@ class RequestHandler(threading.Thread):
 			elif entry['action'] == 'send-event':
 				self.send('event', entry['event'])
 
-				self.send('event', info)
+			self._sync_queue.task_done()
 
 
 	def run(self):
