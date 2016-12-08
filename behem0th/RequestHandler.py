@@ -79,9 +79,14 @@ class RequestHandler(threading.Thread):
 				self.send('filelist', self.client._filetree)
 
 		elif what == 'file':
-			with open(info['path'], 'wb') as f:
-				for buf in iter(partial(self.sock.recv, 4096), b''):
-					f.write(buf)
+			if info['action'] == 'receive':
+				with open(info['path'], 'wb') as f:
+					for buf in iter(partial(self.sock.recv, 4096), b''):
+						f.write(buf)
+
+			elif info['action'] == 'send':
+				self.queue_file(info['path'], 'send')
+
 
 		elif what == 'event':
 			event_type = info['type']
@@ -119,10 +124,10 @@ class RequestHandler(threading.Thread):
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
 
-	def queue_file(self, path):
+	def queue_file(self, path, action):
 		with self._sync_list_cv:
 			self._sync_list.append({
-				'action': 'send-file',
+				'action': action + '-file',
 				'path': path
 			})
 
@@ -151,12 +156,19 @@ class RequestHandler(threading.Thread):
 				path = entry['path']
 				info = json.dumps({
 					'path': path,
-					'size': os.path.getsize(path)
+					'size': os.path.getsize(path),
+					'action': 'receive'
 				})
 
 				self.send('file', info)
 				for buf in utils.read_file_seq(path):
 					self.sock.sendall(buf)
+
+			if entry['action'] == 'request-file':
+				self.send('file', json.dumps({
+					'path': entry['path'],
+					'action': 'send'
+				}))
 
 			elif entry['action'] == 'send-event':
 				info = json.dumps(entry['event'])
