@@ -97,16 +97,16 @@ class RequestHandler(threading.Thread):
 				# TODO: factor out common code with Client._handle_fsevent()
 				# TODO: Lock modified files until they are completely transfered.
 				if event == 'created':
-					self._add_to_filetree(info['path'], f_type)
+					self.client._add_to_filetree(info['path'], f_type)
 					open(info['path'], 'a').close()
 
 				elif event == 'deleted':
-					self._remove_from_filetree(info['path'])
+					self.client._remove_from_filetree(info['path'])
 					os.remove(info['path'])
 
 				elif event == 'moved':
-					self._remove_from_filetree(info['path'])
-					self._add_to_filetree(info['dest'], f_type)
+					self.client._remove_from_filetree(info['path'])
+					self.client._add_to_filetree(info['dest'], f_type)
 					os.rename(info['path'], info['dest'])
 
 
