@@ -3,7 +3,12 @@
 A file syncing library for Python 3.
 
 
-### Documentation
+## Installation
+```
+python3 setup.py install
+```
+
+## Documentation
 ```
 pip3 install Sphinx
 python3 setup.py build_sphinx
