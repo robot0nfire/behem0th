@@ -57,7 +57,7 @@ class RequestHandler(threading.Thread):
 		if self._is_client:
 			# Lock the client until the filelist has been sent back by the server.
 			self.client._rlock.acquire()
-			self.send('filelist', self.client._filetree)
+			self.send('filelist', self.client._filelist)
 
 
 	def close(self):
@@ -72,42 +72,61 @@ class RequestHandler(threading.Thread):
 
 		if what == 'filelist':
 			if self._is_client:
-				self.client._filetree = info
+				self.client._filelist = info
 				self.client._rlock.release()
 			else:
-				self.client._merge_filetree(info)
-				self.send('filelist', self.client._filetree)
+				files, events = self.client._merge_filelist(info)
+				with self.client._rlock:
+					self.send('filelist', self.client._filelist)
+
+				for e in events:
+					self.queue_event(e)
+				for f in files:
+					self.queue_file(f[0], f[1])
+
 
 		elif what == 'file':
+			self.client._ignore_next_fsevent(info['path'])
 			if info['action'] == 'receive':
+				size = info['size']
+
 				with open(info['path'], 'wb') as f:
-					for buf in iter(partial(self.sock.recv, 4096), b''):
+					buf = self.sock.recv(max(0, min(size, 4096)))
+					while buf:
 						f.write(buf)
+						size -= 4096
+						buf = self.sock.recv(max(0, min(size, 4096)))
 
 			elif info['action'] == 'send':
-				self.queue_file(info['path'], 'send')
+				self.queue_file('send', info['path'])
 
 
 		elif what == 'event':
-			event_type = info['type']
+			f_type, event = info['type'].split('-')
+			path = info['path']
 
-			if event_type[:3] == 'dir' or event_type[:4] == 'file':
-				f_type, event = info['type'].split('-')
+			self.client._ignore_next_fsevent(path)
 
-				# TODO: factor out common code with Client._handle_fsevent()
-				# TODO: Lock modified files until they are completely transfered.
-				if event == 'created':
-					self.client._add_to_filetree(info['path'], f_type)
-					open(info['path'], 'a').close()
+			# TODO: factor out common code with Client._handle_fsevent() and Client._merge_filelist()
+			# TODO: Lock modified files until they are completely transfered.
+			if event == 'created':
+				self.client._add_to_filelist(path, f_type)
 
-				elif event == 'deleted':
-					self.client._remove_from_filetree(info['path'])
-					os.remove(info['path'])
+				# create the file/directory
+				if f_type == 'file':
+					open(path, 'a').close()
+				else:
+					os.mkdir(path, 0o755)
 
-				elif event == 'moved':
-					self.client._remove_from_filetree(info['path'])
-					self.client._add_to_filetree(info['dest'], f_type)
-					os.rename(info['path'], info['dest'])
+
+			elif event == 'deleted':
+				self.client._remove_from_filelist(path)
+				os.remove(path)
+
+			elif event == 'moved':
+				self.client._remove_from_filelist(path)
+				self.client._add_to_filelist(info['dest'], f_type)
+				os.rename(path, info['dest'])
 
 
 	def send(self, what, data):
@@ -124,7 +143,7 @@ class RequestHandler(threading.Thread):
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
 
-	def queue_file(self, path, action):
+	def queue_file(self, action, path):
 		with self._sync_list_cv:
 			self._sync_list.append({
 				'action': action + '-file',
@@ -154,24 +173,24 @@ class RequestHandler(threading.Thread):
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
-				info = json.dumps({
+
+				self.send('file', {
 					'path': path,
 					'size': os.path.getsize(path),
 					'action': 'receive'
 				})
 
-				self.send('file', info)
 				for buf in utils.read_file_seq(path):
 					self.sock.sendall(buf)
 
 			if entry['action'] == 'request-file':
-				self.send('file', json.dumps({
+				self.send('file', {
 					'path': entry['path'],
 					'action': 'send'
-				}))
+				})
 
 			elif entry['action'] == 'send-event':
-				info = json.dumps(entry['event'])
+				self.send('event', entry['event'])
 
 				self.send('event', info)
 

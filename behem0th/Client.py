@@ -51,11 +51,15 @@ def synchronized(fn):
 
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
-		super().__init__(ignore_patterns=client._ignore_list, ignore_directories=True)
+		super().__init__(ignore_patterns=client._ignore_list)
 		self._client = client
 
 
 	def on_any_event(self, event):
+		# Ignore DirModifiedEvent's completely.
+		if event.event_type == 'modified' and event.is_directory:
+			return
+
 		self._client._handle_fsevent(event)
 
 
@@ -111,14 +115,11 @@ class Client:
 
 		self._ignore_list = IGNORE_LIST + [self._meta_folder]
 
-		self._filetree = {
-			'type': 'dir',
-			'path': '',
-			'files': {}
-		}
-
+		self._filelist = {}
 		self._observer = Observer()
 		self._observer.schedule(_FsEventHandler(self), self._sync_path, recursive=True)
+
+		self._fsevent_ignore_list = []
 
 
 	def connect(self, host, port=DEFAULT_PORT):
@@ -182,24 +183,10 @@ class Client:
 
 		"""
 
-		return self._get_files(self._filetree)
-
-
-	def open_file(self, path, mode='r'):
-		"""Opens a currently sync'd file for reading/writing.
-
-		Parameters
-		----------
-		path : :obj:`str`
-			Relative path of the file
-
-		mode : :obj:`str`, optional
-			Opening mode for the file (default: reading)
-			Format is the same as :func:`open`
-
-		"""
-
-		return None
+		return [
+			{'path': f['path'], 'type': f['type']}
+				for f in self._filelist.values()
+		]
 
 
 	@synchronized
@@ -215,98 +202,91 @@ class Client:
 
 
 	@synchronized
-	def _get_files(self, tree, relpath=''):
-		ret = []
-
-		for name, file in tree['files'].items():
-			if file['type'] == 'dir':
-				ret += self._get_files(file, os.path.join(relpath, name))
-			else:
-				ret.append(os.path.join(relpath, name))
-
-		return ret
-
-
-	@synchronized
 	def _collect_files(self):
 		for root, dirs, files in os.walk(self._sync_path):
 			files[:] = [f for f in files if f not in self._ignore_list]
 			dirs[:] = [d for d in dirs if d not in self._ignore_list]
 
+			relpath = os.path.relpath(root, self._sync_path)
+
 			for name in files:
-				self._add_to_filetree(os.path.join(root, name), 'file')
+				self._add_to_filelist(os.path.join(relpath, name), 'file')
 
 			for name in dirs:
-				self._add_to_filetree(os.path.join(root, name), 'dir')
-
-
-	# path must be an absolute path
-	@synchronized
-	def _get_filetree_entry(self, path):
-		path = os.path.relpath(path, self._sync_path)
-		entry = self._filetree
-		splitted = path.split('/')
-
-		for part in splitted[:-1]:
-			if not part in entry['files'] or entry['files'][part]['type'] != 'dir':
-				return
-
-			entry = entry['files'][part]
-
-		return (entry, path, splitted[-1])
-
-
-	# path must be an absolute path
-	@synchronized
-	def _add_to_filetree(self, path, type):
-		entry, relpath, name = self._get_filetree_entry(path)
-
-		entry['files'][name] = {
-			'type': type,
-			'path': relpath,
-			'files': {}
-		}
-
-
-	# path must be an absolute path
-	@synchronized
-	def _remove_from_filetree(self, path):
-		entry, relpath, name = self._get_filetree_entry(path)
-
-		del entry['files'][name]
+				self._add_to_filelist(os.path.join(relpath, name), 'dir')
 
 
 	@synchronized
-	def _merge_filetree(self, filetree):
-		for name, info in filetree['files'].items():
-			if name not in self._filetree['files']:
-				self._add_to_filetree(name, info['type'])
+	def _merge_filelist(self, filelist):
+		files = []
+		events = []
+
+		for file, info in filelist.items():
+			if not file in self._filelist:
+				self._add_to_filelist(file, info['type'])
+				self._ignore_next_fsevent(file)
+
+				if info['type'] == 'file':
+					open(file, 'a').close()
+					files.append(('request', file))
+				else:
+					os.mkdir(file, 0o755)
+
+		for file, info in self._filelist.items():
+			if not file in filelist:
+				if info['type'] == 'file':
+					events.append({'type': 'file-created', 'path': file})
+					files.append(('send', file))
+				else:
+					events.append({'type': 'dir-created', 'path': file})
+
+		return (files, events)
+
+
+	@synchronized
+	def _add_to_filelist(self, path, type):
+		path = os.path.normpath(path)
+		self._filelist[path] = {'path': path, 'type': type}
+
+
+	@synchronized
+	def _remove_from_filelist(self, path):
+		del self._filelist[os.path.normpath(path)]
 
 
 	@synchronized
 	def _handle_fsevent(self, evt):
+		path = os.path.relpath(evt.src_path, self._sync_path)
 		type = 'dir' if evt.is_directory else 'file'
 
-		remote_event = {
-			'type': type + '-' + evt.event_type,
-			'path': evt.src_path
-		}
+		if path in self._fsevent_ignore_list:
+			self._fsevent_ignore_list.remove(path)
+			return
+
+		remote_event = {'type': type + '-' + evt.event_type, 'path': path}
 
 		if evt.event_type == 'created':
-			self._add_to_filetree(evt.src_path, type)
+			self._add_to_filelist(path, type)
 
 		elif evt.event_type == 'deleted':
-			self._remove_from_filetree(evt.src_path)
+			self._remove_from_filelist(path)
 
 		elif evt.event_type == 'moved':
-			self._remove_from_filetree(evt.src_path)
-			self._add_to_filetree(evt.dest_path, type)
-			remote_event['dest'] = evt.dest_path
+			self._remove_from_filelist(path)
 
-		self._run_on_peers('queue_event', remote_event)
+			path = os.path.relpath(evt.dest_path, self._sync_path)
+			self._add_to_filelist(path, type)
+			remote_event['dest'] = path
 
-		if evt.event_type == 'modified' or evt.event_type == 'created':
-			self._run_on_peers('queue_file', evt.src_path, 'send')
+		if evt.event_type != 'modified':
+			self._run_on_peers('queue_event', remote_event)
+		elif type == 'file':
+			self._run_on_peers('queue_file', 'send', path)
+
+
+	@synchronized
+	def _ignore_next_fsevent(self, path):
+		self._fsevent_ignore_list.append(path)
 
 
 	@synchronized
@@ -333,7 +313,10 @@ class Client:
 		''')
 
 
-		for file in self.get_files():
+		for file, info in self._filelist.items():
+			if info['type'] == 'dir':
+				continue
+
 			try:
 				conn.execute(
 					'insert into files(hash, path) values (?, ?)',
