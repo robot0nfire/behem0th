@@ -305,8 +305,8 @@ class Client:
 
 		self._run_on_peers('queue_event', remote_event)
 
-		if evt.event_type == 'modified':
-			self._run_on_peers('queue_file', evt.src_path)
+		if evt.event_type == 'modified' or evt.event_type == 'created':
+			self._run_on_peers('queue_file', evt.src_path, 'send')
 
 
 	@synchronized
