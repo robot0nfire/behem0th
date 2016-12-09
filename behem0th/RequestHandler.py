@@ -60,6 +60,8 @@ class RequestHandler(threading.Thread):
 
 
 	def close(self):
+		self.sync_queue.put({'action': 'exit'})
+
 		try:
 			self.sock.shutdown(socket.SHUT_RDWR)
 		except OSError:
@@ -161,6 +163,9 @@ class RequestHandler(threading.Thread):
 		while 1:
 			entry = self.sync_queue.get()
 			log.info_v('Processing {0}', entry)
+
+			if entry['action'] == 'exit':
+				break
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
