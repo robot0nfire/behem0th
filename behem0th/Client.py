@@ -21,12 +21,13 @@
 #
 
 import os
+import sys
 import socket
 import sqlite3
 import threading
 from functools import wraps
 from watchdog.observers import Observer
-from watchdog.events import PatternMatchingEventHandler
+from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
 from behem0th import utils
 from behem0th.RequestHandler import RequestHandler
 
@@ -60,7 +61,13 @@ class _FsEventHandler(PatternMatchingEventHandler):
 		if event.event_type == 'modified' and event.is_directory:
 			return
 
-		self._client._handle_fsevent(event)
+		event_handled = self._client._handle_fsevent(event)
+
+		# On macOS, watchdog only produces a file-created event,
+		# on Linux however also a file-modified event is generated.
+		if sys.platform == 'darwin':
+			if event_handled and event.event_type == 'created' and not event.is_directory:
+				self._client._handle_fsevent(FileModifiedEvent(event.src_path))
 
 
 class _AcceptWorker(threading.Thread):
@@ -261,7 +268,7 @@ class Client:
 
 		if path in self._fsevent_ignore_list:
 			self._fsevent_ignore_list.remove(path)
-			return
+			return False
 
 		remote_event = {'type': type + '-' + evt.event_type, 'path': path}
 
@@ -282,6 +289,8 @@ class Client:
 			self._run_on_peers('queue_event', remote_event)
 		elif type == 'file':
 			self._run_on_peers('queue_file', 'send', path)
+
+		return True
 
 
 	@synchronized
