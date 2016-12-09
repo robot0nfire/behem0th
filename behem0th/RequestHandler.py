@@ -26,7 +26,6 @@ import struct
 import threading
 import socket
 import queue
-from functools import partial
 from behem0th import utils
 
 
@@ -36,7 +35,7 @@ class RequestHandler(threading.Thread):
 	def __init__(self, **kwargs):
 		super().__init__()
 		self.daemon = True
-		self._sync_queue = queue.Queue()
+		self.sync_queue = queue.Queue()
 
 		RequestHandler.req_handler_num += 1
 		self.name = "request-handler-{0}".format(RequestHandler.req_handler_num)
@@ -46,7 +45,7 @@ class RequestHandler(threading.Thread):
 		with self.client._rlock:
 			self.client._peers.append(self)
 
-		self._is_client = bool(self.client._sock)
+		self.is_client = bool(self.client._sock)
 
 
 	def setup(self):
@@ -54,7 +53,7 @@ class RequestHandler(threading.Thread):
 
 		# If self.client has a (active) socket, it is a client and
 		# thus needs to starts syncing up with the server.
-		if self._is_client:
+		if self.is_client:
 			# Lock the client until the filelist has been sent back by the server.
 			self.client._rlock.acquire()
 			self.send('filelist', self.client._filelist)
@@ -71,7 +70,7 @@ class RequestHandler(threading.Thread):
 		info = json.loads(data.decode('utf-8'))
 
 		if what == 'filelist':
-			if self._is_client:
+			if self.is_client:
 				self.client._filelist = info
 				self.client._rlock.release()
 			else:
@@ -144,14 +143,14 @@ class RequestHandler(threading.Thread):
 
 
 	def queue_file(self, action, path):
-		self._sync_queue.put({
+		self.sync_queue.put({
 			'action': action + '-file',
 			'path': path
 		})
 
 
 	def queue_event(self, event):
-		self._sync_queue.put({
+		self.sync_queue.put({
 			'action': 'send-event',
 			'event': event
 		})
@@ -159,7 +158,7 @@ class RequestHandler(threading.Thread):
 
 	def sync_worker(self):
 		while 1:
-			entry = self._sync_queue.get()
+			entry = self.sync_queue.get()
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
@@ -182,34 +181,30 @@ class RequestHandler(threading.Thread):
 			elif entry['action'] == 'send-event':
 				self.send('event', entry['event'])
 
-			self._sync_queue.task_done()
+			self.sync_queue.task_done()
 
 
 	def run(self):
 		self.setup()
 
-		try:
-			utils.create_thread(self.sync_worker, name='{0}_sync-worker'.format(self.name))
+		utils.create_thread(self.sync_worker,
+			name=self.name.replace('request-handler', 'sync-worker'))
 
-			while 1:
-				info = self.sock.recv(4)
-				if not len(info):
-					break
+		while 1:
+			info = self.sock.recv(4)
+			if not info:
+				break
 
-				info = struct.unpack('<I', info)
+			info = struct.unpack('<I', info)
 
-				data = self.sock.recv(info[0])
-				data = data.split(b'\n', 1)
-				if len(data) != 2:
-					self.log('\n\nReceived invalid data:\n{0}\n\n', data)
-				else:
-					self.handle(data[0].decode('utf-8'), data[1])
+			data = self.sock.recv(info[0])
+			data = data.split(b'\n', 1)
+			if len(data) != 2:
+				self.log('\n\nReceived invalid data:\n{0}\n\n', data)
+			else:
+				self.handle(data[0].decode('utf-8'), data[1])
 
-		except ConnectionResetError:
-			self.log('Lost connection to {0}', self.address)
-		else:
-			self.log('Disconnected from {0}', self.address)
-
+		self.log('Disconnected from {0}', self.address)
 		self.close()
 
 

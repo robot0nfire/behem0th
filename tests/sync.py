@@ -23,7 +23,5 @@ else:
 		sys.exit(1)
 
 	input()
-	print(c.get_files())
-
 
 c.close()

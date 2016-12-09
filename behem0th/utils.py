@@ -33,10 +33,10 @@ def log(str, *args, **kwargs):
 	print('[behem0th]', str)
 
 
-def create_thread(target, args=(), **kwargs):
+def create_thread(target, args=(), name=None):
 	thread = threading.Thread(target=target, args=args)
-	if 'name' in kwargs:
-		thread.name = kwargs['name']
+	if name:
+		thread.name = name
 	thread.daemon = True
 	thread.start()
 

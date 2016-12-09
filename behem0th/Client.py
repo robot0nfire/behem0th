@@ -53,7 +53,7 @@ def synchronized(fn):
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
 		super().__init__(ignore_patterns=client._ignore_list)
-		self._client = client
+		self.client = client
 
 
 	def on_any_event(self, event):
@@ -61,13 +61,13 @@ class _FsEventHandler(PatternMatchingEventHandler):
 		if event.event_type == 'modified' and event.is_directory:
 			return
 
-		event_handled = self._client._handle_fsevent(event)
+		event_handled = self.client._handle_fsevent(event)
 
 		# On macOS, watchdog only produces a file-created event,
 		# on Linux however also a file-modified event is generated.
 		if sys.platform == 'darwin':
 			if event_handled and event.event_type == 'created' and not event.is_directory:
-				self._client._handle_fsevent(FileModifiedEvent(event.src_path))
+				self.client._handle_fsevent(FileModifiedEvent(event.src_path))
 
 
 class _AcceptWorker(threading.Thread):
@@ -100,7 +100,7 @@ class Client:
 	----------
 	path : :obj:`str`, optional
 		The path which should be sync'd.
-	folder : :obj:`folder`, optional
+	folder : :obj:`str`, optional
 		The name of the folder which will contain behem0th-only
 		data needed for syncing.
 
@@ -114,7 +114,7 @@ class Client:
 		self._peers = []
 
 		self._sync_path = os.path.abspath(path)
-		self._meta_folder = folder
+		self._meta_folder = os.path.normpath(folder) + '/'
 
 		path = os.path.join(self._sync_path, self._meta_folder)
 		if not os.path.exists(path):
