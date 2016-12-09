@@ -33,7 +33,7 @@ from behem0th.RequestHandler import RequestHandler
 
 
 IGNORE_LIST = [
-	'.git',
+	'.git/',
 	'.DS_Store'
 ]
 
@@ -229,9 +229,11 @@ class Client:
 
 	@synchronized
 	def _collect_files(self):
+		ignore_list = [os.path.normpath(e) for e in self._ignore_list]
+
 		for root, dirs, files in os.walk(self._sync_path):
-			files[:] = [f for f in files if f not in self._ignore_list]
-			dirs[:] = [d for d in dirs if d not in self._ignore_list]
+			files[:] = [f for f in files if f not in ignore_list]
+			dirs[:] = [d for d in dirs if d not in ignore_list]
 
 			relpath = os.path.relpath(root, self._sync_path)
 
