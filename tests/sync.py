@@ -7,12 +7,10 @@ import time
 import behem0th
 
 
-c = behem0th.Client()
+c = behem0th.Client(verbose_log=True)
 
 if len(sys.argv) == 2 and sys.argv[1] == 'listen':
 	c.listen()
-
-	print('started listening ...\n')
 	input()
 
 else:

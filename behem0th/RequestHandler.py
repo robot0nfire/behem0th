@@ -26,7 +26,7 @@ import struct
 import threading
 import socket
 import queue
-from behem0th import utils
+from behem0th import utils, log
 
 
 class RequestHandler(threading.Thread):
@@ -49,7 +49,7 @@ class RequestHandler(threading.Thread):
 
 
 	def setup(self):
-		self.log('Connected to {0}', self.address)
+		log.info('Connected to {0}:{1}', self.address[0], self.address[1])
 
 		# If self.client has a (active) socket, it is a client and
 		# thus needs to starts syncing up with the server.
@@ -68,6 +68,7 @@ class RequestHandler(threading.Thread):
 
 	def handle(self, what, data):
 		info = json.loads(data.decode('utf-8'))
+		log.info_v('Handling {0}, data:\n{1}', what, info)
 
 		if what == 'filelist':
 			if self.is_client:
@@ -159,6 +160,7 @@ class RequestHandler(threading.Thread):
 	def sync_worker(self):
 		while 1:
 			entry = self.sync_queue.get()
+			log.info_v('Processing {0}', entry)
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
@@ -200,13 +202,11 @@ class RequestHandler(threading.Thread):
 			data = self.sock.recv(info[0])
 			data = data.split(b'\n', 1)
 			if len(data) != 2:
-				self.log('\n\nReceived invalid data:\n{0}\n\n', data)
+				log.error('Received invalid data:\n{0}', data)
 			else:
 				self.handle(data[0].decode('utf-8'), data[1])
 
-		self.log('Disconnected from {0}', self.address)
+		log.info('Disconnected from {0}:{1}', self.address[0], self.address[1])
 		self.close()
 
 
-	def log(self, str, *args, **kwargs):
-		utils.log('{__name}: ' + str, *args, __name=self.name, **kwargs)

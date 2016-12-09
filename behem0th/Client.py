@@ -28,7 +28,7 @@ import threading
 from functools import wraps
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
-from behem0th import utils
+from behem0th import utils, log
 from behem0th.RequestHandler import RequestHandler
 
 
@@ -62,6 +62,7 @@ class _FsEventHandler(PatternMatchingEventHandler):
 			return
 
 		event_handled = self.client._handle_fsevent(event)
+		log.info_v('Got event {0} - was handled? {1}', event, event_handled)
 
 		# On macOS, watchdog only produces a file-created event,
 		# on Linux however also a file-modified event is generated.
@@ -80,10 +81,13 @@ class _AcceptWorker(threading.Thread):
 
 	def run(self):
 		client = self.kwargs['client']
+		address = self.kwargs['address']
 
 		accept_sock = socket.socket()
-		accept_sock.bind(self.kwargs['address'])
+		accept_sock.bind(address)
 		accept_sock.listen()
+
+		log.info_v('Started listening on {0}:{1}', address[0], address[1])
 
 		while 1:
 			sock, address = accept_sock.accept()
@@ -106,9 +110,22 @@ class Client:
 
 		behem0th will _not_ sync this folder!
 
+	no_log : :obj:`bool`, optional
+		If set to true, behem0th will not output any logging messages. (default)
+		Otherwise, it will print some basic informations, e.g. when
+		a client (dis)connects.
+		Implies verbose_log = false
+
+	verbose_log : :obj:`bool`, optional
+		If set to true, behem0th will print some advanded (debugging) messages.
+		Implies no_log = false
+
 	"""
 
-	def __init__(self, path='.', folder='.behem0th'):
+	def __init__(self, path='.', folder='.behem0th', no_log=True, verbose_log=False):
+		log.NO_LOG = no_log and not verbose_log
+		log.VERBOSE_LOG = not log.NO_LOG and verbose_log
+
 		self._sock = None
 		self._rlock = threading.RLock()
 		self._peers = []
@@ -121,10 +138,12 @@ class Client:
 			os.mkdir(path, 0o755)
 
 		self._ignore_list = IGNORE_LIST + [self._meta_folder]
+		log.info_v('Ignored files/directories: {0}', self._ignore_list)
 
 		self._filelist = {}
 		self._observer = Observer()
 		self._observer.schedule(_FsEventHandler(self), self._sync_path, recursive=True)
+		log.info_v("Started watching folder '{0}'", self._sync_path)
 
 		self._fsevent_ignore_list = []
 
@@ -332,7 +351,7 @@ class Client:
 					(utils.hash_file(file), file)
 				)
 			except FileNotFoundError:
-				utils.log(
+				log.warn(
 					"File '{0}' not found - possibly not fully sync'd!\n"
 					"(This can normally be safely ignored - as soon as you reconnect, this device will sync up.)",
 				file)

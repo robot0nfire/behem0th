@@ -22,15 +22,7 @@
 
 import threading
 import hashlib
-from string import Formatter
 from functools import partial
-
-
-def log(str, *args, **kwargs):
-	str = Formatter().vformat(str, args, kwargs)
-	str = str.replace('\n', '\n' + ' ' * 11)
-
-	print('[behem0th]', str)
 
 
 def create_thread(target, args=(), name=None):
