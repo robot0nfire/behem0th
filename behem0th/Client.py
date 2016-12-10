@@ -273,8 +273,7 @@ class Client:
 
 	@synchronized
 	def _add_to_filelist(self, path, type):
-		path = os.path.normpath(path)
-		self._filelist[path] = {'path': path, 'type': type}
+		self._filelist[os.path.normpath(path)] = {'type': type}
 
 
 	@synchronized
