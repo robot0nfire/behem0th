@@ -23,7 +23,6 @@
 import os
 import sys
 import socket
-import sqlite3
 import threading
 from functools import wraps
 from watchdog.observers import Observer
@@ -104,11 +103,6 @@ class Client:
 	----------
 	path : :obj:`str`, optional
 		The path which should be sync'd.
-	folder : :obj:`str`, optional
-		The name of the folder which will contain behem0th-only
-		data needed for syncing.
-
-		behem0th will _not_ sync this folder!
 
 	no_log : :obj:`bool`, optional
 		If set to true, behem0th will not output any logging messages. (default)
@@ -122,7 +116,7 @@ class Client:
 
 	"""
 
-	def __init__(self, path='.', folder='.behem0th', no_log=True, verbose_log=False):
+	def __init__(self, path='.', no_log=True, verbose_log=False):
 		log.NO_LOG = no_log and not verbose_log
 		log.VERBOSE_LOG = not log.NO_LOG and verbose_log
 
@@ -131,13 +125,8 @@ class Client:
 		self._peers = []
 
 		self._sync_path = os.path.abspath(path)
-		self._meta_folder = os.path.normpath(folder) + '/'
 
-		path = os.path.join(self._sync_path, self._meta_folder)
-		if not os.path.exists(path):
-			os.mkdir(path, 0o755)
-
-		self._ignore_list = IGNORE_LIST + [self._meta_folder]
+		self._ignore_list = IGNORE_LIST
 		log.info_v('Ignored files/directories: {0}', self._ignore_list)
 
 		self._filelist = {}
@@ -196,7 +185,6 @@ class Client:
 		self._run_on_peers('close')
 
 		self._observer.stop()
-		self._write_db()
 
 
 	@synchronized
@@ -322,40 +310,3 @@ class Client:
 	def _run_on_peers(self, method, *args, **kwargs):
 		for peer in self._peers:
 			getattr(peer, method)(*args, **kwargs)
-
-
-	@synchronized
-	def _write_db(self):
-		file = os.path.join(self._meta_folder, 'file_index.db')
-		try:
-			os.remove(file)
-		except OSError:
-			pass
-
-		conn = sqlite3.connect(file)
-
-		conn.execute('''
-			create table files (
-				hash text primary key,
-				path text not null
-			)
-		''')
-
-
-		for file, info in self._filelist.items():
-			if info['type'] == 'dir':
-				continue
-
-			try:
-				conn.execute(
-					'insert into files(hash, path) values (?, ?)',
-					(utils.hash_file(file), file)
-				)
-			except FileNotFoundError:
-				log.warn(
-					"File '{0}' not found - possibly not fully sync'd!\n"
-					"(This can normally be safely ignored - as soon as you reconnect, this device will sync up.)",
-				file)
-
-		conn.commit()
-		conn.close()
