@@ -26,6 +26,7 @@ import struct
 import threading
 import socket
 import queue
+import tempfile
 from behem0th import utils, log
 
 
@@ -60,19 +61,25 @@ class FilelistRoute(Route):
 
 class FileRoute(Route):
 	def handle(self, data, request):
-		request.client._ignore_next_fsevent(data['path'])
-		if data['action'] == 'receive':
+		action = data['action']
+		path = data['path']
+
+		request.client._ignore_next_fsevent(path)
+		if action == 'receive':
 			size = data['size']
+			tmpf = tempfile.NamedTemporaryFile(delete=False)
 
-			with open(data['path'], 'wb') as f:
+			buf = self.recv(max(0, min(size, 4096)))
+			while buf:
+				tmpf.write(buf)
+				size -= 4096
 				buf = self.recv(max(0, min(size, 4096)))
-				while buf:
-					f.write(buf)
-					size -= 4096
-					buf = self.recv(max(0, min(size, 4096)))
 
-		elif data['action'] == 'send':
-			request.queue_file('send', data['path'])
+			tmpf.close()
+			os.rename(tmpf.name, path)
+
+		elif action == 'send':
+			request.queue_file('send', path)
 
 
 class EventRoute(Route):
