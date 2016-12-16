@@ -29,6 +29,87 @@ import queue
 from behem0th import utils, log
 
 
+class Route:
+	def handle(self, data, request):
+		raise NotImplementedError
+
+
+	def send(self, data):
+		self.handler.send(self.route_name, data)
+
+
+	def recv(self, size):
+		return self.handler.sock.recv(size)
+
+
+class FilelistRoute(Route):
+	def handle(self, data, request):
+		if request.is_client:
+			request.client._filelist = data
+			request.client._rlock.release()
+		else:
+			files, events = request.client._merge_filelist(data)
+			with request.client._rlock:
+				self.send(request.client._filelist)
+
+			for e in events:
+				request.queue_event(e)
+			for f in files:
+				request.queue_file(f[0], f[1])
+
+
+class FileRoute(Route):
+	def handle(self, data, request):
+		request.client._ignore_next_fsevent(data['path'])
+		if data['action'] == 'receive':
+			size = data['size']
+
+			with open(data['path'], 'wb') as f:
+				buf = self.recv(max(0, min(size, 4096)))
+				while buf:
+					f.write(buf)
+					size -= 4096
+					buf = self.recv(max(0, min(size, 4096)))
+
+		elif data['action'] == 'send':
+			request.queue_file('send', data['path'])
+
+
+class EventRoute(Route):
+	def handle(self, data, request):
+		f_type, event = data['type'].split('-')
+		path = data['path']
+
+		request.client._ignore_next_fsevent(path)
+
+		# TODO: factor out common code with Client._handle_fsevent() and Client._merge_filelist()
+		# TODO: Lock modified files until they are completely transfered.
+		if event == 'created':
+			request.client._add_to_filelist(path, f_type)
+
+			# create the file/directory
+			if f_type == 'file':
+				open(path, 'a').close()
+			else:
+				os.mkdir(path, 0o755)
+
+		elif event == 'deleted':
+			request.client._remove_from_filelist(path)
+			os.remove(path)
+
+		elif event == 'moved':
+			request.client._remove_from_filelist(path)
+			request.client._add_to_filelist(data['dest'], f_type)
+			os.rename(path, data['dest'])
+
+
+ROUTES = {
+	'filelist': FilelistRoute(),
+	'file': FileRoute(),
+	'event': EventRoute()
+}
+
+
 class RequestHandler(threading.Thread):
 	req_handler_num = 0
 
@@ -36,6 +117,7 @@ class RequestHandler(threading.Thread):
 		super().__init__()
 		self.daemon = True
 		self.sync_queue = queue.Queue()
+		self.routes = {}
 
 		RequestHandler.req_handler_num += 1
 		self.name = "request-handler-{0}".format(RequestHandler.req_handler_num)
@@ -46,6 +128,11 @@ class RequestHandler(threading.Thread):
 			self.client._peers.append(self)
 
 		self.is_client = bool(self.client._sock)
+
+		for name, route in ROUTES.items():
+			route.route_name = name
+			route.handler = self
+			self.routes[name] = route
 
 
 	def setup(self):
@@ -68,79 +155,26 @@ class RequestHandler(threading.Thread):
 			pass
 
 
-	def handle(self, what, data):
-		info = json.loads(data.decode('utf-8'))
-		log.info_v('Handling {0}, data:\n{1}', what, info)
+	def handle(self, route, data):
+		data = json.loads(data.decode('utf-8'))
+		log.info_v('Handling {0}, data:\n{1}', route, data)
 
-		if what == 'filelist':
-			if self.is_client:
-				self.client._filelist = info
-				self.client._rlock.release()
-			else:
-				files, events = self.client._merge_filelist(info)
-				with self.client._rlock:
-					self.send('filelist', self.client._filelist)
-
-				for e in events:
-					self.queue_event(e)
-				for f in files:
-					self.queue_file(f[0], f[1])
+		if route in self.routes:
+			self.routes[route].handle(data, self)
+		else:
+			log.error("Data received on unknown route '{0}'!", route)
 
 
-		elif what == 'file':
-			self.client._ignore_next_fsevent(info['path'])
-			if info['action'] == 'receive':
-				size = info['size']
-
-				with open(info['path'], 'wb') as f:
-					buf = self.sock.recv(max(0, min(size, 4096)))
-					while buf:
-						f.write(buf)
-						size -= 4096
-						buf = self.sock.recv(max(0, min(size, 4096)))
-
-			elif info['action'] == 'send':
-				self.queue_file('send', info['path'])
-
-
-		elif what == 'event':
-			f_type, event = info['type'].split('-')
-			path = info['path']
-
-			self.client._ignore_next_fsevent(path)
-
-			# TODO: factor out common code with Client._handle_fsevent() and Client._merge_filelist()
-			# TODO: Lock modified files until they are completely transfered.
-			if event == 'created':
-				self.client._add_to_filelist(path, f_type)
-
-				# create the file/directory
-				if f_type == 'file':
-					open(path, 'a').close()
-				else:
-					os.mkdir(path, 0o755)
-
-
-			elif event == 'deleted':
-				self.client._remove_from_filelist(path)
-				os.remove(path)
-
-			elif event == 'moved':
-				self.client._remove_from_filelist(path)
-				self.client._add_to_filelist(info['dest'], f_type)
-				os.rename(path, info['dest'])
-
-
-	def send(self, what, data):
-		what = bytes(what + '\n', 'utf-8')
+	def send(self, route, data):
+		route = bytes(route + '\n', 'utf-8')
 
 		if type(data) == dict:
 			data = json.dumps(data)
 
 		if type(data) == str:
-			data = what + bytes(data, 'utf-8')
+			data = route + bytes(data, 'utf-8')
 		else:
-			data = what + bytes(data)
+			data = route + bytes(data)
 
 		self.sock.sendall(struct.pack('<I', len(data)) + data)
 
