@@ -78,6 +78,8 @@ class FileRoute(Route):
 			tmpf.close()
 			os.rename(tmpf.name, path)
 
+			request.client._update_metadata(path)
+
 		elif action == 'send':
 			request.queue_file('send', path)
 

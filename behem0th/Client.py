@@ -248,6 +248,12 @@ class Client:
 				else:
 					os.mkdir(file, 0o755)
 
+			elif info['type'] == 'file' and info['hash'] != self._filelist[file]['hash']:
+				if info['mtime'] < self._filelist[file]['mtime']:
+					files.append(('send', file))
+				else:
+					files.append(('request', file))
+
 		for file, info in self._filelist.items():
 			if not file in filelist:
 				if info['type'] == 'file':
@@ -261,12 +267,24 @@ class Client:
 
 	@synchronized
 	def _add_to_filelist(self, path, type):
-		self._filelist[os.path.normpath(path)] = {'type': type}
+		self._filelist[os.path.normpath(path)] = {
+			'type': type,
+			'hash': utils.hash_file(path) if type == 'file' else '',
+			'mtime': os.path.getmtime(path)
+		}
 
 
 	@synchronized
 	def _remove_from_filelist(self, path):
 		del self._filelist[os.path.normpath(path)]
+
+
+	@synchronized
+	def _update_metadata(self, path):
+		path = os.path.normpath(path)
+
+		self._filelist[path]['hash'] = utils.hash_file(path)
+		self._filelist[path]['mtime'] = os.path.getmtime(path)
 
 
 	@synchronized
@@ -293,9 +311,11 @@ class Client:
 			self._add_to_filelist(path, type)
 			remote_event['dest'] = path
 
+
 		if evt.event_type != 'modified':
 			self._run_on_peers('queue_event', remote_event)
 		elif type == 'file':
+			self._update_metadata(path)
 			self._run_on_peers('queue_file', 'send', path)
 
 		return True
