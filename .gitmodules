@@ -1,0 +1,6 @@
+[submodule "watchdog"]
+	path = watchdog
+	url = https://github.com/gorakhargosh/watchdog.git
+[submodule "pathtools"]
+	path = pathtools
+	url = https://github.com/gorakhargosh/pathtools.git

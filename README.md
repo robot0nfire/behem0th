@@ -1,15 +1,6 @@
 # behem0th
 
-A file syncing library for Python 3.
+A file syncing library for Python 3.<br>
+It weighs in at just about 400 SLoC and is easily embeddable (e.g. as git submodule) into other projects.
 
-
-## Installation
-```
-python3 setup.py install
-```
-
-## Documentation
-```
-pip3 install Sphinx
-python3 setup.py build_sphinx
-```
+It was designed for and is used in [fl0w](https://github.com/robot0nfire/fl0w)

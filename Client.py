@@ -25,8 +25,14 @@ import sys
 import socket
 import threading
 from functools import wraps
+
+BEHEM0TH_PATH = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+sys.path.append(os.path.join(BEHEM0TH_PATH, 'watchdog/src'))
+sys.path.append(os.path.join(BEHEM0TH_PATH, 'pathtools'))
+
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
+
 from behem0th import utils, log
 from behem0th.RequestHandler import RequestHandler
 
