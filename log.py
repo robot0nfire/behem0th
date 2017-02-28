@@ -21,18 +21,22 @@
 #
 
 from string import Formatter
+import sys
 import inspect
 import threading
 
 global NO_LOG
 global VERBOSE_LOG
 
-CLEAR_FORMAT = '\033[0m'
-WARN_COLOR = '\033[33m'
-ERR_COLOR = '\033[31m'
-BEHEM0TH_COLOR = '\033[94m'
-CLASS_COLOR = '\033[96m'
-THREAD_COLOR = '\033[92m'
+if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
+	CLEAR_FORMAT = '\033[0m'
+	WARN_COLOR = '\033[33m'
+	ERR_COLOR = '\033[31m'
+	BEHEM0TH_COLOR = '\033[94m'
+	CLASS_COLOR = '\033[96m'
+	THREAD_COLOR = '\033[92m'
+else:
+	CLEAR_FORMAT = WARN_COLOR = ERR_COLOR = BEHEM0TH_COLOR = CLASS_COLOR = THREAD_COLOR = ''
 
 
 def _print(str, *args, **kwargs):
