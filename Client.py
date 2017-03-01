@@ -274,13 +274,17 @@ class Client:
 
 	@synchronized
 	def _add_to_filelist(self, path, type):
+		path = os.path.normpath(path)
 		abspath = self._abspath(path)
 
-		self._filelist[os.path.normpath(path)] = {
-			'type': type,
-			'hash': utils.hash_file(abspath) if type == 'file' else '',
-			'mtime': os.path.getmtime(abspath)
-		}
+		if os.path.isfile(abspath):
+			self._filelist[path] = {
+				'type': type,
+				'hash': utils.hash_file(abspath) if type == 'file' else '',
+				'mtime': os.path.getmtime(abspath)
+			}
+		else:
+			self._filelist[path] = {'type': type, 'hash': None, 'mtime': None}
 
 
 	@synchronized
