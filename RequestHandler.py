@@ -76,7 +76,7 @@ class FileRoute(Route):
 				buf = self.recv(max(0, min(size, 4096)))
 
 			tmpf.close()
-			os.rename(tmpf.name, path)
+			os.rename(tmpf.name, request.client._abspath(path))
 
 			request.client._update_metadata(path)
 
@@ -88,6 +88,7 @@ class EventRoute(Route):
 	def handle(self, data, request):
 		f_type, event = data['type'].split('-')
 		path = data['path']
+		abspath = request.client._abspath(path)
 
 		request.client._ignore_next_fsevent(path)
 
@@ -98,18 +99,18 @@ class EventRoute(Route):
 
 			# create the file/directory
 			if f_type == 'file':
-				open(path, 'a').close()
+				open(abspath, 'a').close()
 			else:
-				os.mkdir(path, 0o755)
+				os.mkdir(abspath, 0o755)
 
 		elif event == 'deleted':
 			request.client._remove_from_filelist(path)
-			os.remove(path)
+			os.remove(abspath)
 
 		elif event == 'moved':
 			request.client._remove_from_filelist(path)
 			request.client._add_to_filelist(data['dest'], f_type)
-			os.rename(path, data['dest'])
+			os.rename(abspath, data['dest'])
 
 
 ROUTES = {
@@ -212,14 +213,15 @@ class RequestHandler(threading.Thread):
 
 			if entry['action'] == 'send-file':
 				path = entry['path']
+				abspath = self.client._abspath(path)
 
 				self.send('file', {
 					'path': path,
-					'size': os.path.getsize(path),
+					'size': os.path.getsize(abspath),
 					'action': 'receive'
 				})
 
-				for buf in utils.read_file_seq(path):
+				for buf in utils.read_file_seq(abspath):
 					self.sock.sendall(buf)
 
 			if entry['action'] == 'request-file':

@@ -247,12 +247,13 @@ class Client:
 			if not file in self._filelist:
 				self._add_to_filelist(file, info['type'])
 				self._ignore_next_fsevent(file)
+				abspath = self._abspath(file)
 
 				if info['type'] == 'file':
-					open(file, 'a').close()
+					open(abspath, 'a').close()
 					files.append(('request', file))
 				else:
-					os.mkdir(file, 0o755)
+					os.mkdir(abspath, 0o755)
 
 			elif info['type'] == 'file' and info['hash'] != self._filelist[file]['hash']:
 				if info['mtime'] < self._filelist[file]['mtime']:
@@ -273,10 +274,12 @@ class Client:
 
 	@synchronized
 	def _add_to_filelist(self, path, type):
+		abspath = self._abspath(path)
+
 		self._filelist[os.path.normpath(path)] = {
 			'type': type,
-			'hash': utils.hash_file(path) if type == 'file' else '',
-			'mtime': os.path.getmtime(path)
+			'hash': utils.hash_file(abspath) if type == 'file' else '',
+			'mtime': os.path.getmtime(abspath)
 		}
 
 
@@ -288,9 +291,10 @@ class Client:
 	@synchronized
 	def _update_metadata(self, path):
 		path = os.path.normpath(path)
+		abspath = self._abspath(path)
 
-		self._filelist[path]['hash'] = utils.hash_file(path)
-		self._filelist[path]['mtime'] = os.path.getmtime(path)
+		self._filelist[path]['hash'] = utils.hash_file(abspath)
+		self._filelist[path]['mtime'] = os.path.getmtime(abspath)
 
 
 	@synchronized
@@ -336,3 +340,6 @@ class Client:
 	def _run_on_peers(self, method, *args, **kwargs):
 		for peer in self._peers:
 			getattr(peer, method)(*args, **kwargs)
+
+	def _abspath(self, path):
+		return os.path.join(self._sync_path, path)
