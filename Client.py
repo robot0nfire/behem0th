@@ -204,8 +204,8 @@ class Client:
 		"""
 
 		return [
-			{'path': f['path'], 'type': f['type']}
-				for f in self._filelist.values()
+			{'path': path, 'type': info['type']}
+				for path, info in self._filelist.items()
 		]
 
 
