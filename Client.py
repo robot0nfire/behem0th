@@ -122,7 +122,7 @@ class Client:
 
 	"""
 
-	def __init__(self, path='.', no_log=True, verbose_log=False):
+	def __init__(self, path='.', ignore_list=None, no_log=True, verbose_log=False):
 		log.NO_LOG = no_log and not verbose_log
 		log.VERBOSE_LOG = not log.NO_LOG and verbose_log
 
@@ -133,6 +133,9 @@ class Client:
 		self._sync_path = os.path.abspath(path)
 
 		self._ignore_list = IGNORE_LIST
+		if ignore_list:
+			self._ignore_list += ignore_list
+
 		log.info_v('Ignored files/directories: {0}', self._ignore_list)
 
 		self._filelist = {}
