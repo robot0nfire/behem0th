@@ -90,7 +90,7 @@ class _AcceptWorker(threading.Thread):
 
 		accept_sock = socket.socket()
 		accept_sock.bind(address)
-		accept_sock.listen()
+		accept_sock.listen(1)
 
 		log.info_v('Started listening on {0}:{1}', address[0], address[1])
 
