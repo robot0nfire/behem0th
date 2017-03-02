@@ -57,7 +57,7 @@ def synchronized(fn):
 
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
-		super().__init__(ignore_patterns=client._ignore_list)
+		super().__init__()
 		self.client = client
 
 
@@ -306,6 +306,9 @@ class Client:
 		path = os.path.relpath(evt.src_path, self._sync_path)
 		type = 'dir' if evt.is_directory else 'file'
 
+		if self._is_ignored_file(path):
+			return False
+
 		if path in self._fsevent_ignore_list:
 			self._fsevent_ignore_list.remove(path)
 			return False
@@ -345,5 +348,14 @@ class Client:
 		for peer in self._peers:
 			getattr(peer, method)(*args, **kwargs)
 
+
 	def _abspath(self, path):
 		return os.path.join(self._sync_path, path)
+
+
+	def _is_ignored_file(self, path):
+		for p in self._ignore_list:
+			if path.startswith(p):
+				return True
+
+		return False
