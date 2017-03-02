@@ -79,6 +79,9 @@ class FileRoute(Route):
 			os.rename(tmpf.name, request.client._abspath(path))
 
 			request.client._update_metadata(path)
+			request.client._event_handler._dispatch(
+				'received', request.client, path, 'file'
+			)
 
 		elif action == 'send':
 			request.queue_file('send', path)
@@ -223,6 +226,10 @@ class RequestHandler(threading.Thread):
 
 				for buf in utils.read_file_seq(abspath):
 					self.sock.sendall(buf)
+
+				self.client._event_handler._dispatch(
+					'sent', self.client, path, 'file'
+				)
 
 			if entry['action'] == 'request-file':
 				self.send('file', {

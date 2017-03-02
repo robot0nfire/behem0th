@@ -99,6 +99,53 @@ class _AcceptWorker(threading.Thread):
 			RequestHandler(sock=sock, address=address, client=client).start()
 
 
+class Event:
+	def __init__(self, abspath, relpath, type):
+		self.abspath = abspath
+		self.relpath = relpath
+		self.type = type
+
+
+	def __str__(self):
+		return str(self.__dict__)
+
+
+class EventHandler:
+	"""Base EventHandler class for all behem0th events
+	"""
+
+	def __init__(self, ignore_directories=False):
+		self.ignore_directories = ignore_directories
+
+
+	def _dispatch(self, event, client, path, type):
+		ev = Event(client._abspath(path), path, type)
+
+		if hasattr(self, 'on_' + event):
+			getattr(self, 'on_' + event)(ev)
+		else:
+			log.error("Unknown event '{0}' encountered (path='{1}' type={2})", event, path, type)
+
+
+	def on_created(self, event):
+		pass
+
+	def on_modified(self, event):
+		pass
+
+	def on_deleted(self, event):
+		pass
+
+	def on_moved(self, event):
+		pass
+
+	def on_sent(self, event):
+		pass
+
+	def on_received(self, event):
+		pass
+
+
 class Client:
 	"""The main interface for behem0th
 
@@ -122,7 +169,7 @@ class Client:
 
 	"""
 
-	def __init__(self, path='.', ignore_list=None, no_log=True, verbose_log=False):
+	def __init__(self, path='.', ignore_list=None, event_handler=None, no_log=True, verbose_log=False):
 		log.NO_LOG = no_log and not verbose_log
 		log.VERBOSE_LOG = not log.NO_LOG and verbose_log
 
@@ -144,6 +191,8 @@ class Client:
 		log.info_v("Started watching folder '{0}'", self._sync_path)
 
 		self._fsevent_ignore_list = []
+
+		self._event_handler = event_handler if event_handler else EventHandler()
 
 
 	def connect(self, host, port=DEFAULT_PORT):
@@ -320,9 +369,11 @@ class Client:
 
 		if evt.event_type == 'created':
 			self._add_to_filelist(path, type)
+			self._event_handler._dispatch('created', self, path, type)
 
 		elif evt.event_type == 'deleted':
 			self._remove_from_filelist(path)
+			self._event_handler._dispatch('deleted', self, path, type)
 
 		elif evt.event_type == 'moved':
 			self._remove_from_filelist(path)
@@ -330,6 +381,11 @@ class Client:
 			path = os.path.relpath(evt.dest_path, self._sync_path)
 			self._add_to_filelist(path, type)
 			remote_event['dest'] = path
+
+			self._event_handler._dispatch('moved', self, path, type)
+
+		elif evt.event_type == 'modified':
+			self._event_handler._dispatch('modified', self, path, type)
 
 
 		if evt.event_type != 'modified':

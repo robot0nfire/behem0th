@@ -20,4 +20,4 @@
 # SOFTWARE.
 #
 
-from behem0th.Client import Client
+from behem0th.Client import Client, EventHandler
