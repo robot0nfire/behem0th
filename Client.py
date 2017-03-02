@@ -57,7 +57,7 @@ def synchronized(fn):
 
 class _FsEventHandler(PatternMatchingEventHandler):
 	def __init__(self, client):
-		super().__init__()
+		super().__init__(ignore_patterns=client._ignore_list)
 		self.client = client
 
 
