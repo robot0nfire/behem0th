@@ -329,7 +329,7 @@ class Client:
 		path = os.path.normpath(path)
 		abspath = self._abspath(path)
 
-		if os.path.isfile(abspath):
+		if os.path.exists(abspath):
 			self._filelist[path] = {
 				'type': type,
 				'hash': utils.hash_file(abspath) if type == 'file' else '',
