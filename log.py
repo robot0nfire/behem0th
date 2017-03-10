@@ -57,7 +57,7 @@ def _print(str, *args, **kwargs):
 
 	print(BEHEM0TH_COLOR + '[behem0th]',
 		CLASS_COLOR + '[' + class_ + ']',
-		THREAD_COLOR + thread + ':', str)
+		THREAD_COLOR + thread + ':', str, CLEAR_FORMAT)
 
 
 def info(str, *args, **kwargs):
