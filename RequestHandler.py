@@ -64,7 +64,6 @@ class FileRoute(Route):
 		action = data['action']
 		path = data['path']
 
-		request.client._ignore_next_fsevent(path)
 		if action == 'receive':
 			size = data['size']
 			tmpf = tempfile.NamedTemporaryFile(delete=False)
@@ -76,6 +75,10 @@ class FileRoute(Route):
 				buf = self.recv(max(0, min(size, 4096)))
 
 			tmpf.close()
+
+			# watchdog reports a file-deleted and a file-created event, so ignore both.
+			request.client._ignore_next_fsevent(path)
+			request.client._ignore_next_fsevent(path)
 			os.rename(tmpf.name, request.client._abspath(path))
 
 			request.client._update_metadata(path)
@@ -96,15 +99,14 @@ class EventRoute(Route):
 		request.client._ignore_next_fsevent(path)
 
 		# TODO: factor out common code with Client._handle_fsevent() and Client._merge_filelist()
-		# TODO: Lock modified files until they are completely transfered.
 		if event == 'created':
-			request.client._add_to_filelist(path, f_type)
-
 			# create the file/directory
 			if f_type == 'file':
 				open(abspath, 'a').close()
 			else:
 				os.mkdir(abspath, 0o755)
+
+			request.client._add_to_filelist(path, f_type)
 
 		elif event == 'deleted':
 			request.client._remove_from_filelist(path)
@@ -112,8 +114,11 @@ class EventRoute(Route):
 
 		elif event == 'moved':
 			request.client._remove_from_filelist(path)
-			request.client._add_to_filelist(data['dest'], f_type)
 			os.rename(abspath, data['dest'])
+			request.client._add_to_filelist(data['dest'], f_type)
+
+		else:
+			log.warn('Unknown event {0}', data)
 
 
 ROUTES = {
@@ -214,7 +219,7 @@ class RequestHandler(threading.Thread):
 			if entry['action'] == 'exit':
 				break
 
-			if entry['action'] == 'send-file':
+			elif entry['action'] == 'send-file':
 				path = entry['path']
 				abspath = self.client._abspath(path)
 
@@ -231,7 +236,7 @@ class RequestHandler(threading.Thread):
 					'sent', self.client, path, 'file'
 				)
 
-			if entry['action'] == 'request-file':
+			elif entry['action'] == 'request-file':
 				self.send('file', {
 					'path': entry['path'],
 					'action': 'send'
