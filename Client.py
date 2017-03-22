@@ -188,7 +188,9 @@ class Client:
 
 		self._filelist = {}
 		self._observer = Observer()
+		self._observer.name = self._observer.name.replace('Thread', 'fs-event-handler')
 		self._observer.schedule(_FsEventHandler(self), self._sync_path, recursive=True)
+
 		log.info_v("Started watching folder '{0}'", self._sync_path)
 
 		self._fsevent_ignore_list = []
