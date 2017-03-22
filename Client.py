@@ -243,8 +243,7 @@ class Client:
 
 		"""
 
-		self._run_on_peers('close')
-
+		self._run_on_peers('close', None)
 		self._observer.stop()
 
 
@@ -387,15 +386,13 @@ class Client:
 
 			self._event_handler._dispatch('moved', self, path, type)
 
-		elif evt.event_type == 'modified':
+		if evt.event_type == 'modified':
 			self._event_handler._dispatch('modified', self, path, type)
-
-
-		if evt.event_type != 'modified':
-			self._run_on_peers('queue_event', remote_event)
-		elif type == 'file':
 			self._update_metadata(path)
-			self._run_on_peers('queue_file', 'send', path)
+			self._run_on_peers('queue_file', None, 'send', path)
+
+		else:
+			self._run_on_peers('queue_event', None, remote_event)
 
 		return True
 
@@ -406,9 +403,12 @@ class Client:
 
 
 	@synchronized
-	def _run_on_peers(self, method, *args, **kwargs):
+	def _run_on_peers(self, method, exclude, *args, **kwargs):
+		log.info_v('Running \'{0}\' on {1}, excluding {2}', method, self._peers, exclude)
+
 		for peer in self._peers:
-			getattr(peer, method)(*args, **kwargs)
+			if peer != exclude:
+				getattr(peer, method)(*args, **kwargs)
 
 
 	def _abspath(self, path):

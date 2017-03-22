@@ -27,7 +27,11 @@ import threading
 import socket
 import queue
 import tempfile
+import base64
+import select
 from behem0th import utils, log
+
+BLOCK_SIZE = 4096
 
 
 class Route:
@@ -37,10 +41,6 @@ class Route:
 
 	def send(self, data):
 		self.handler.send(self.route_name, data)
-
-
-	def recv(self, size):
-		return self.handler.sock.recv(size)
 
 
 class FilelistRoute(Route):
@@ -59,20 +59,31 @@ class FilelistRoute(Route):
 				request.queue_file(f[0], f[1])
 
 
+"""
+	{
+		"action": "<action>",
+		"path": "<relpath-to-file>"
+	}
+	<action> can be either 'receive' or 'send'
+
+	Payload are base64 encoded chunks (BLOCK_SIZE bytes)
+"""
 class FileRoute(Route):
 	def handle(self, data, request):
 		action = data['action']
 		path = data['path']
 
 		if action == 'receive':
-			size = data['size']
 			tmpf = tempfile.NamedTemporaryFile(delete=False)
 
-			buf = self.recv(max(0, min(size, 4096)))
-			while buf:
-				tmpf.write(buf)
-				size -= 4096
-				buf = self.recv(max(0, min(size, 4096)))
+			buffer = b''
+			for chunk in request.recv():
+				buffer += chunk
+
+				if len(buffer) >= BLOCK_SIZE:
+					tmpf.write(base64.b64decode(buffer[:BLOCK_SIZE]))
+					buffer = buffer[:BLOCK_SIZE]
+			tmpf.write(base64.b64decode(buffer))
 
 			tmpf.close()
 
@@ -89,7 +100,24 @@ class FileRoute(Route):
 		elif action == 'send':
 			request.queue_file('send', path)
 
+		else:
+			log.warn('FileRoute: Unknown action \'{0}\', igoring.', action)
 
+		# If we are the 'server', we also need to distribute all file request
+		# to all other clients.
+		if not request.is_client:
+			action = 'send' if action == 'receive' else 'request'
+			request.client._run_on_peers('queue_file', request, action, path)
+
+
+"""
+	{
+		"type": "<type>",
+		"path": "<relpath-to-file>"
+	}
+	<type> can be one of 'file-created', 'file-deleted', 'file-moved'
+
+"""
 class EventRoute(Route):
 	def handle(self, data, request):
 		f_type, event = data['type'].split('-')
@@ -118,8 +146,11 @@ class EventRoute(Route):
 			request.client._add_to_filelist(data['dest'], f_type)
 
 		else:
-			log.warn('Unknown event {0}', data)
+			log.warn('EventRoute: Unknown event {0}', data)
 
+		# For rationale, see FileRoute.handle()
+		if not request.is_client:
+			request.client._run_on_peers('queue_event', request, data)
 
 ROUTES = {
 	'filelist': FilelistRoute(),
@@ -128,6 +159,24 @@ ROUTES = {
 }
 
 
+"""
+	behem0th's protocol is completely text-based, using utf-8 encoding and
+	encoded in JSON for easy parsing.
+
+	A request usually looks like this:
+		{ "route": "<route-name>", "data": "<data>" }
+
+	'data' holds additional data which is then passed to the route.
+	There is no special format designed for 'data' and is specific to each route.
+
+	After each request there is a newline to separate them. (think of HTTP)
+
+	If a route needs to transfer additional data (a 'payload'), it has to send them
+	in a text-based format, e.g. base-64 encoding for binary data.
+
+	After the payload, if any, there has to be another newline to separate it from
+	the next request.
+"""
 class RequestHandler(threading.Thread):
 	req_handler_num = 0
 
@@ -136,6 +185,7 @@ class RequestHandler(threading.Thread):
 		self.daemon = True
 		self.sync_queue = queue.Queue()
 		self.routes = {}
+		self.recvbuf = b''
 
 		RequestHandler.req_handler_num += 1
 		self.name = "request-handler-{0}".format(RequestHandler.req_handler_num)
@@ -145,6 +195,7 @@ class RequestHandler(threading.Thread):
 		with self.client._rlock:
 			self.client._peers.append(self)
 
+		self.sock.setblocking(0)
 		self.is_client = bool(self.client._sock)
 
 		for name, route in ROUTES.items():
@@ -173,8 +224,16 @@ class RequestHandler(threading.Thread):
 			pass
 
 
-	def handle(self, route, data):
-		data = json.loads(data.decode('utf-8'))
+	def handle(self, data):
+		try:
+			data = json.loads(data)
+		except ValueError:
+			log.error('Received invalid data: {0}', data)
+			return
+
+		route = data['route']
+		data = data['data']
+
 		log.info_v('Handling {0}, data:\n{1}', route, data)
 
 		if route in self.routes:
@@ -184,17 +243,45 @@ class RequestHandler(threading.Thread):
 
 
 	def send(self, route, data):
-		route = bytes(route + '\n', 'utf-8')
+		request = json.dumps({'route': route, 'data': data}) + '\n'
 
-		if type(data) == dict:
-			data = json.dumps(data)
+		self.sock.sendall(request.encode())
 
-		if type(data) == str:
-			data = route + bytes(data, 'utf-8')
-		else:
-			data = route + bytes(data)
 
-		self.sock.sendall(struct.pack('<I', len(data)) + data)
+	def recv(self):
+		if self.recvbuf:
+			# This needs special handling because there could be multiple
+			# request in recvbuf. If this is the case, we can only yield the first
+			# one and have to leave to others in recvbuf.
+
+			index = self.recvbuf.find(b'\n')
+
+			if index == -1:
+				yield self.recvbuf
+				self.recvbuf = None
+			else:
+				yield self.recvbuf[:index]
+				self.recvbuf = self.recvbuf[index+1:]
+				return
+
+		while 1:
+			select.select([self.sock], [], [])
+
+			chunk = self.sock.recv(1024)
+			if not len(chunk):
+				# If select has signaled the socket is readable, yet .recv()
+				# returns zero bytes, the other end probably performed
+				# a close() or shutdown() on the socket.
+				break
+
+			index = chunk.find(b'\n')
+
+			if index == -1:
+				yield chunk
+			else:
+				yield chunk[:index]
+				self.recvbuf = chunk[index+1:]
+				break
 
 
 	def queue_file(self, action, path):
@@ -225,12 +312,12 @@ class RequestHandler(threading.Thread):
 
 				self.send('file', {
 					'path': path,
-					'size': os.path.getsize(abspath),
 					'action': 'receive'
 				})
 
-				for buf in utils.read_file_seq(abspath):
-					self.sock.sendall(buf)
+				for buf in utils.read_file_seq(abspath, BLOCK_SIZE):
+					self.sock.sendall(base64.b64encode(buf))
+				self.sock.sendall(b'\n')
 
 				self.client._event_handler._dispatch(
 					'sent', self.client, path, 'file'
@@ -255,18 +342,15 @@ class RequestHandler(threading.Thread):
 			name=self.name.replace('request-handler', 'sync-worker'))
 
 		while 1:
-			info = self.sock.recv(4)
-			if not info:
+			buffer = b''
+			for chunk in self.recv():
+				buffer += chunk
+
+			if not len(buffer):
 				break
 
-			info = struct.unpack('<I', info)
+			self.handle(buffer.decode())
 
-			data = self.sock.recv(info[0])
-			data = data.split(b'\n', 1)
-			if len(data) != 2:
-				log.error('Received invalid data:\n{0}', data)
-			else:
-				self.handle(data[0].decode('utf-8'), data[1])
 
 		log.info('Disconnected from {0}:{1}', self.address[0], self.address[1])
 		self.close()

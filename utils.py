@@ -35,16 +35,16 @@ def create_thread(target, args=(), name=None):
 	return thread
 
 
-def read_file_seq(path):
+def read_file_seq(path, block_size):
 	with open(path, 'rb') as f:
-		for buf in iter(partial(f.read, 4096), b''):
+		for buf in iter(partial(f.read, block_size), b''):
 			yield buf
 
 
 def hash_file(path):
 	h = hashlib.md5()
 	h.update(bytes(path, 'utf-8'))
-	for buf in read_file_seq(path):
+	for buf in read_file_seq(path, 4096):
 		h.update(buf)
 
 	return h.hexdigest()
