@@ -39,6 +39,7 @@ from behem0th.RequestHandler import RequestHandler
 
 IGNORE_LIST = [
 	'.git/',
+	'__pycache__/',
 	'.DS_Store'
 ]
 
