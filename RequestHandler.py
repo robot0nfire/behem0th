@@ -136,14 +136,21 @@ class EventRoute(Route):
 
 			request.client._add_to_filelist(path, f_type)
 
+			os.chmod(abspath, 0o777)
+
 		elif event == 'deleted':
 			request.client._remove_from_filelist(path)
 			os.remove(abspath)
 
 		elif event == 'moved':
+			dest = data['dest']
+			absdest = request.client._abspath(dest)
+
 			request.client._remove_from_filelist(path)
-			os.rename(abspath, data['dest'])
-			request.client._add_to_filelist(data['dest'], f_type)
+			os.rename(abspath, absdest)
+
+			os.chmod(absdest, 0o777)
+			request.client._add_to_filelist(dest, f_type)
 
 		else:
 			log.warn('EventRoute: Unknown event {0}', data)
